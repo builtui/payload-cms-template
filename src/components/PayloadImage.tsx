@@ -2,24 +2,31 @@ import Image from 'next/image'
 
 type Props = {
   image: any
-  className?: string
   sizes?: string
   priority?: boolean
 }
 
-export function PayloadImage({ image, className = '', sizes = '100vw', priority = false }: Props) {
+/**
+ * Renders a Payload media image using Next.js <Image> with fill mode.
+ * Must be placed inside a container with position: relative and defined dimensions
+ * (e.g. via aspect-ratio).
+ *
+ * Usage:
+ *   <div className="relative aspect-[16/9] overflow-hidden">
+ *     <PayloadImage image={data.image} sizes="100vw" />
+ *   </div>
+ */
+export function PayloadImage({ image, sizes = '100vw', priority = false }: Props) {
   if (!image || typeof image !== 'object' || !image.url) return null
 
   return (
     <Image
       src={image.url}
       alt={image.alt || ''}
-      width={image.width || 1200}
-      height={image.height || 800}
+      fill
       sizes={sizes}
-      className={className}
+      className="object-cover"
       priority={priority}
-      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
     />
   )
 }

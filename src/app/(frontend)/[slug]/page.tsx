@@ -3,6 +3,16 @@ import config from '@payload-config'
 import { RenderBlocks } from '@/components/RenderBlocks'
 import { notFound } from 'next/navigation'
 
+export const revalidate = 60
+
+export async function generateStaticParams() {
+  const payload = await getPayload({ config })
+  const pages = await payload.find({ collection: 'pages', limit: 100 })
+  return pages.docs
+    .filter((p: any) => p.slug !== 'home')
+    .map((p: any) => ({ slug: p.slug }))
+}
+
 type Props = { params: Promise<{ slug: string }> }
 
 export default async function DynamicPage({ params }: Props) {

@@ -2,6 +2,8 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 import { RenderBlocks } from '@/components/RenderBlocks'
 
+export const revalidate = 60 // Re-generate every 60 seconds
+
 export default async function HomePage() {
   const payload = await getPayload({ config })
 
