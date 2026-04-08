@@ -10,12 +10,9 @@ export function Header({ navItems }: { navItems: NavItem[] }) {
       <div className="edge flex items-center justify-between h-14 md:h-16">
         <div className="flex items-center">
           <Link href="/" className="shrink-0">
-            <img src="/images/hugenottenhaus-logo.svg" alt="Hugenottenhaus" className="h-8 md:h-9 w-auto" />
+            {/* Replace with your logo */}
+            <img src="/images/logo.svg" alt="Logo" className="h-8 md:h-9 w-auto" />
           </Link>
-          <div className="w-px h-7 bg-line mx-3" />
-          <span className="shrink-0">
-            <img src="/images/moving-school-logo.svg" alt="Moving School" className="h-[2rem] w-auto" />
-          </span>
         </div>
         <nav className="hidden md:flex items-center gap-7">
           <NavLinks items={navItems} />

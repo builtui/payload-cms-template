@@ -8,10 +8,10 @@ import sharp from 'sharp'
 
 import { Users } from './collections/Users'
 import { Media } from './collections/Media'
-import { Events } from './collections/Events'
-import { Artists } from './collections/Artists'
-import { Projects } from './collections/Projects'
 import { Pages } from './collections/Pages'
+// Add your collections here:
+// import { Events } from './collections/Events'
+
 import { SiteSettings } from './globals/SiteSettings'
 import { Navigation } from './globals/Navigation'
 import { Footer } from './globals/Footer'
@@ -31,9 +31,8 @@ export default buildConfig({
           const slug = (data as any)?.slug
           return slug === 'home' ? '/' : `/${slug}`
         }
-        if (collectionConfig?.slug === 'events') return `/programm/${(data as any)?.slug}`
-        if (collectionConfig?.slug === 'artists') return `/kuenstlerinnen/${(data as any)?.slug}`
-        if (collectionConfig?.slug === 'projects') return `/projekte/${(data as any)?.slug}`
+        // Add your collection URL mappings here:
+        // if (collectionConfig?.slug === 'events') return `/events/${(data as any)?.slug}`
         return '/'
       },
       breakpoints: [
@@ -41,10 +40,10 @@ export default buildConfig({
         { label: 'Tablet', name: 'tablet', width: 768, height: 1024 },
         { label: 'Desktop', name: 'desktop', width: 1440, height: 900 },
       ],
-      collections: ['pages', 'events', 'artists', 'projects'],
+      collections: ['pages'],
     },
   },
-  collections: [Users, Media, Events, Artists, Projects, Pages],
+  collections: [Users, Media, Pages],
   globals: [SiteSettings, Navigation, Footer],
   editor: lexicalEditor(),
   secret: process.env.PAYLOAD_SECRET || '',
@@ -67,9 +66,9 @@ export default buildConfig({
   sharp,
   plugins: [
     seoPlugin({
-      collections: ['pages', 'events', 'artists', 'projects'],
+      collections: ['pages'],
       uploadsCollection: 'media',
-      generateTitle: ({ doc }: any) => doc?.title ? `${doc.title} — Hugenottenhaus Kassel` : 'Hugenottenhaus Kassel',
+      generateTitle: ({ doc }: any) => doc?.title ? `${doc.title} — My Website` : 'My Website',
       generateDescription: ({ doc }: any) => doc?.description || '',
     }),
   ],

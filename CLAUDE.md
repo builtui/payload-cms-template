@@ -31,8 +31,8 @@ Every block component uses `BlockWrapper`:
 - Background can be `transparent`, `warm-white`, or `deep-black`.
 
 ### Block Numbering
-All blocks use concept-number slugs: `m1-page-title`, `m2-hero`, `m3-text-image-split`, etc.
-Labels in admin: `M3 Text-Bild Split`. This creates a shared language between design concept, CMS admin, and code.
+Blocks should use concept-number slugs: `m1-page-title`, `m2-hero`, `m3-text-image-split`, etc.
+Labels in admin: `M3 Text-Bild Split`. Blocks are NOT included in the template — build them per project. This creates a shared language between design concept, CMS admin, and code.
 
 ### Smart Link System
 `linkField()` creates a radio toggle (Internal/External):
