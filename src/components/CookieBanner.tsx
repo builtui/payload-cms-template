@@ -3,6 +3,54 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 
+// ─── Custom Toggle ───
+
+function ConsentToggle({ checked, onChange, disabled, label, description }: {
+  checked: boolean
+  onChange?: (value: boolean) => void
+  disabled?: boolean
+  label: string
+  description: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => !disabled && onChange?.(!checked)}
+      className={`flex items-start gap-3 text-left ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-pointer group'}`}
+    >
+      <span
+        className={`
+          mt-0.5 shrink-0 w-9 h-5 rounded-full relative transition-colors duration-200
+          ${checked
+            ? 'bg-warm-white'
+            : 'bg-warm-gray/30 group-hover:bg-warm-gray/50'
+          }
+        `}
+      >
+        <span
+          className={`
+            absolute top-0.5 left-0.5 w-4 h-4 rounded-full transition-transform duration-200
+            ${checked
+              ? 'translate-x-4 bg-deep-black'
+              : 'translate-x-0 bg-warm-gray'
+            }
+          `}
+        />
+      </span>
+      <span>
+        <span className="text-xs font-bold block">{label}</span>
+        <span className="text-[11px] text-warm-gray block mt-0.5">{description}</span>
+      </span>
+    </button>
+  )
+}
+
+// ─── Types ───
+
 type ConsentState = {
   necessary: boolean
   analytics: boolean
@@ -128,63 +176,36 @@ export function CookieBanner() {
           <div className="mt-6 pt-6 border-t border-white/10">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-[640px]">
               {/* Necessary — always on */}
-              <label className="flex items-start gap-3 cursor-not-allowed">
-                <input type="checkbox" checked disabled className="mt-1 accent-warm-white" />
-                <div>
-                  <span className="text-xs font-bold block">Notwendig</span>
-                  <span className="text-[11px] text-warm-gray block mt-0.5">
-                    Fuer den Betrieb der Website erforderlich. Kann nicht deaktiviert werden.
-                  </span>
-                </div>
-              </label>
+              <ConsentToggle
+                checked={true}
+                disabled={true}
+                label="Notwendig"
+                description="Für den Betrieb der Website erforderlich. Kann nicht deaktiviert werden."
+              />
 
               {/* Analytics */}
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={consent.analytics}
-                  onChange={(e) => setConsent({ ...consent, analytics: e.target.checked })}
-                  className="mt-1 accent-warm-white"
-                />
-                <div>
-                  <span className="text-xs font-bold block">Statistik</span>
-                  <span className="text-[11px] text-warm-gray block mt-0.5">
-                    Helfen uns zu verstehen, wie Besucher die Website nutzen (z.B. Seitenaufrufe).
-                  </span>
-                </div>
-              </label>
+              <ConsentToggle
+                checked={consent.analytics}
+                onChange={(v) => setConsent({ ...consent, analytics: v })}
+                label="Statistik"
+                description="Helfen uns zu verstehen, wie Besucher die Website nutzen (z.B. Seitenaufrufe)."
+              />
 
               {/* Marketing */}
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={consent.marketing}
-                  onChange={(e) => setConsent({ ...consent, marketing: e.target.checked })}
-                  className="mt-1 accent-warm-white"
-                />
-                <div>
-                  <span className="text-xs font-bold block">Marketing</span>
-                  <span className="text-[11px] text-warm-gray block mt-0.5">
-                    Werden verwendet, um Besuchern relevante Inhalte anzuzeigen.
-                  </span>
-                </div>
-              </label>
+              <ConsentToggle
+                checked={consent.marketing}
+                onChange={(v) => setConsent({ ...consent, marketing: v })}
+                label="Marketing"
+                description="Werden verwendet, um Besuchern relevante Inhalte anzuzeigen."
+              />
 
               {/* External Media */}
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={consent.externalMedia}
-                  onChange={(e) => setConsent({ ...consent, externalMedia: e.target.checked })}
-                  className="mt-1 accent-warm-white"
-                />
-                <div>
-                  <span className="text-xs font-bold block">Externe Medien</span>
-                  <span className="text-[11px] text-warm-gray block mt-0.5">
-                    Erlaubt das Laden externer Inhalte (YouTube, Vimeo). Diese Dienste koennen Cookies setzen.
-                  </span>
-                </div>
-              </label>
+              <ConsentToggle
+                checked={consent.externalMedia}
+                onChange={(v) => setConsent({ ...consent, externalMedia: v })}
+                label="Externe Medien"
+                description="Erlaubt das Laden externer Inhalte (YouTube, Vimeo). Diese Dienste können Cookies setzen."
+              />
             </div>
 
             <button
