@@ -4,14 +4,15 @@ A production-ready Payload CMS + Next.js template with a modular block architect
 
 ## Features
 
-- **20+ Content Blocks** — Hero, Text-Image Split, Gallery Grid, Event List, Newsletter, Video Embed, and more
 - **Wrapper/Container System** — Consistent spacing architecture where modules sit 0px apart and spacing is controlled through inner padding
 - **Smart Links** — Internal links via relationship picker (no manual slug typing), external links with auto-icon selection
 - **GDPR Cookie Banner** — 4 categories (Necessary, Analytics, Marketing, External Media) with video consent gate
-- **Image Optimization** — Auto WebP conversion, responsive sizes (thumbnail, card, hero), Next.js Image support
+- **Image Optimization** — Auto WebP conversion, responsive sizes (thumbnail, card, hero), Next.js `<Image>` support
 - **SEO Plugin** — Meta title, description, image on all content collections
 - **Live Preview** — Preview content changes in real-time with responsive breakpoints
 - **i18n** — German (default) + English with fallback
+- **Accessibility** — Focus-visible states, skip-to-content link, ARIA attributes, keyboard navigation
+- **ISR/SSG** — Static generation with 60s revalidation for near-instant page loads
 - **Self-hosted everything** — Fonts, icons, no CDN dependencies (GDPR compliant)
 
 ## Quick Start
@@ -55,12 +56,12 @@ Edit `src/app/(frontend)/globals.css`:
 
 ### 2. Assets
 - `public/fonts/` — Your project font (woff2)
-- `public/images/` — Logos, static images
+- `public/images/` — Logos, favicon
 
 ### 3. Content Structure
-- **Collections**: `src/collections/` — Adapt fields for your content types
-- **Blocks**: `src/blocks/` — Add/remove modules, update `index.ts` block arrays
-- **Routes**: `src/app/(frontend)/` — Adjust URL structure
+- **Collections**: `src/collections/` — Add your content types (e.g. Events, Artists, Projects)
+- **Blocks**: `src/blocks/` — Build your modules, register in `index.ts` and `RenderBlocks.tsx`
+- **Routes**: `src/app/(frontend)/` — Add page routes for your collections
 
 ### 4. Seed Data
 ```bash
@@ -69,31 +70,51 @@ cp src/seed.example.ts src/seed.ts
 pnpm seed
 ```
 
-## Block System
+## Building Blocks
 
-| Module | Description |
-|--------|------------|
-| M1 Page Title | Large responsive headlines (2 sizes) |
-| M2 Hero | Typographic hero with flowing headline |
-| M3 Text-Image Split | 12-column grid with text + image (left/right toggle) |
-| M3c Prose Section | Label + body text (2+6 grid) |
-| M3d Body + Sidebar | Body text + key-value sidebar |
-| M3e Data List | Label + tabular list |
-| M3f Video Embed | YouTube/Vimeo with cookie consent gate |
-| M4 Event List | Events from DB with large date numbers |
-| M5 Featured Exhibition | Structured exhibition teaser |
-| M6 Gallery Grid | Image grid with 4 row presets |
-| M7 Full Width Image | Full-width image with selectable aspect ratio |
-| M8 Blockquote | Display-size quote |
-| M9 Image Pair | Two images side by side |
-| M10 Project Cards | Project cards from DB |
-| M11 Artist Marquee | Scrolling names with cursor-following portraits |
-| M12 Newsletter | Signup form |
-| M15 Detail Header | Back link + title + meta (2 styles) |
-| M16 Key Info | Address/hours/contact from site settings |
-| M16b Info Grid | Label + 2x2 info grid |
-| M17a Artist Feature | Artist highlight with image |
-| M17b Artist Pair | Two artists side by side |
+Blocks are **not included** — build them per project based on your design concept. The template provides the infrastructure:
+
+| What | File | Purpose |
+|------|------|---------|
+| Block schema | `src/blocks/MyBlock.ts` | Payload field definitions |
+| Block component | `src/components/blocks/MyBlockBlock.tsx` | React render component |
+| Wrapper fields | `src/fields/wrapperFields.ts` | paddingTop, paddingBottom, background, dividerTop/Bottom |
+| Block wrapper | `src/components/BlockWrapper.tsx` | `<section>` → `.edge` → content pattern |
+| Link field | `src/fields/linkField.ts` | Internal (relationship) / external (URL) toggle |
+| Block registry | `src/blocks/index.ts` | `allBlocks`, `detailBlocks` arrays |
+| Block renderer | `src/components/RenderBlocks.tsx` | `blockType` → component mapping |
+
+### Block naming convention
+Use concept-number slugs: `m1-page-title`, `m2-hero`, `m3-text-image-split`, etc.
+
+### Example block
+```typescript
+// src/blocks/Hero.ts
+import type { Block } from 'payload'
+import { makeWrapperFields } from '../fields/wrapperFields'
+
+export const Hero: Block = {
+  slug: 'm2-hero',
+  labels: { singular: 'M2 Hero', plural: 'M2 Hero' },
+  fields: [
+    { name: 'headline', type: 'text', required: true, localized: true },
+    makeWrapperFields({ paddingTop: 'none', paddingBottom: 'none' }),
+  ],
+}
+```
+
+## Core Components
+
+| Component | Description |
+|-----------|------------|
+| `BlockWrapper` | Wrapper/Container system — full-width `<section>`, content-width `.edge` |
+| `SmartLink` | Auto-icon links (→ internal, ↗ external) from `linkField()` data |
+| `PayloadImage` | Next.js `<Image fill>` wrapper with sizes prop |
+| `CookieBanner` | GDPR cookie consent (4 categories) |
+| `RichText` | Lexical JSON → HTML renderer |
+| `SectionHeader` | Label + link row (e.g. "PROGRAMM" + "Alle →") |
+| `NavLinks` | Client component with active state via `usePathname()` |
+| `MobileMenu` | Portal-based overlay with clip-path animation |
 
 ## Architecture
 

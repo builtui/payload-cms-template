@@ -4,7 +4,13 @@ import { MobileMenu } from './MobileMenu'
 
 type NavItem = { label: string; url: string }
 
-export function Header({ navItems }: { navItems: NavItem[] }) {
+type Props = {
+  navItems: NavItem[]
+  addressShort?: string
+  instagram?: string
+}
+
+export function Header({ navItems, addressShort, instagram }: Props) {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-warm-white/90 backdrop-blur-sm">
       <div className="edge flex items-center justify-between h-14 md:h-16">
@@ -18,7 +24,7 @@ export function Header({ navItems }: { navItems: NavItem[] }) {
           <NavLinks items={navItems} />
           <span className="text-[12px] font-medium text-warm-gray cursor-pointer hover:text-deep-black transition-colors ml-2">DE / EN</span>
         </nav>
-        <MobileMenu navItems={navItems} />
+        <MobileMenu navItems={navItems} addressShort={addressShort} instagram={instagram} />
       </div>
       <div className="header-line border-b border-line opacity-0 transition-opacity duration-200" />
     </header>

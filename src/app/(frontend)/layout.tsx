@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { Header } from '@/components/Header'
@@ -5,6 +6,22 @@ import { HeaderScroll } from '@/components/HeaderScroll'
 import { Footer } from '@/components/Footer'
 import { CookieBanner } from '@/components/CookieBanner'
 import './globals.css'
+
+export const metadata: Metadata = {
+  title: {
+    default: 'My Website',
+    template: '%s — My Website',
+  },
+  description: 'Your site description here.',
+  icons: {
+    icon: '/favicon.svg',
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'de_DE',
+    siteName: 'My Website',
+  },
+}
 
 export default async function FrontendLayout({ children }: { children: React.ReactNode }) {
   let navItems: { label: string; url: string }[] = []
@@ -30,14 +47,18 @@ export default async function FrontendLayout({ children }: { children: React.Rea
     // Globals may not exist yet
   }
 
+  const addressShort = [siteSettings.address?.street, siteSettings.address?.city].filter(Boolean).join(', ')
+
   return (
     <html lang="de">
       <body className="font-sans">
-        <Header navItems={navItems} />
+        <a href="#main-content" className="skip-link">Zum Inhalt springen</a>
+        <Header navItems={navItems} addressShort={addressShort} instagram={siteSettings.instagram} />
         <HeaderScroll />
-        <main>{children}</main>
+        <main id="main-content">{children}</main>
         <Footer
           navItems={navItems}
+          siteName={siteSettings.siteName || ''}
           address={{
             street: siteSettings.address?.street || '',
             zip: siteSettings.address?.zip || '',

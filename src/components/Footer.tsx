@@ -3,6 +3,7 @@ import { ArrowUpRight } from './icons/ArrowUpRight'
 
 type FooterProps = {
   navItems: { label: string; url: string }[]
+  siteName: string
   address: { street: string; zip: string; city: string }
   email: string
   openingHours: string
@@ -14,18 +15,16 @@ type FooterProps = {
 }
 
 export function Footer(props: FooterProps) {
-  const { navItems, address, email, openingHours, instagram, facebook, sponsorLabel, sponsorLogo, legalLinks } = props
+  const { navItems, siteName, address, email, openingHours, instagram, facebook, sponsorLabel, sponsorLogo, legalLinks } = props
 
   return (
     <footer className="bg-deep-black text-warm-white">
       <div className="edge py-12 md:py-[5rem]">
         <div className="grid grid-cols-2 md:grid-cols-6 gap-8 md:gap-6">
           {/* Logos */}
+          {/* Replace with your logo(s) */}
           <div className="col-span-2 md:col-span-1">
-            <div className="flex items-center gap-3 mb-4">
-              <img src="/images/hugenottenhaus-logo.svg" alt="Hugenottenhaus" className="h-9 w-auto invert" />
-            </div>
-            <img src="/images/moving-school-logo.svg" alt="Moving School" className="h-[1.75rem] w-auto brightness-0 invert mt-2 opacity-80" />
+            <img src="/images/logo.svg" alt="Logo" className="h-9 w-auto invert" />
           </div>
           {/* Nav */}
           <div>
@@ -42,7 +41,7 @@ export function Footer(props: FooterProps) {
           </div>
           {/* Hours */}
           <div className="text-[13px]">
-            <p className="text-warm-gray">Oeffnungszeiten</p>
+            <p className="text-warm-gray">Öffnungszeiten</p>
             <p className="text-warm-white font-medium mt-1">{openingHours}</p>
           </div>
           {/* Social */}
@@ -71,7 +70,7 @@ export function Footer(props: FooterProps) {
         </div>
         {/* Bottom bar */}
         <div className="border-t border-white/10 mt-10 pt-5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <p className="text-[11px] text-warm-gray/40">&copy; {new Date().getFullYear()} Hugenottenhaus Kassel</p>
+          <p className="text-[11px] text-warm-gray/40">&copy; {new Date().getFullYear()} {siteName}</p>
           <div className="flex gap-6 text-[11px] text-warm-gray/50">
             {legalLinks.map((link) => (
               <Link key={link.url} href={link.url} className="hover:text-warm-gray transition-colors">{link.label}</Link>
