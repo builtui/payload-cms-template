@@ -6,11 +6,16 @@ import { notFound } from 'next/navigation'
 export const revalidate = 60
 
 export async function generateStaticParams() {
-  const payload = await getPayload({ config })
-  const pages = await payload.find({ collection: 'pages', limit: 100 })
-  return pages.docs
-    .filter((p: any) => p.slug !== 'home')
-    .map((p: any) => ({ slug: p.slug }))
+  try {
+    const payload = await getPayload({ config })
+    const pages = await payload.find({ collection: 'pages', limit: 100 })
+    return pages.docs
+      .filter((p: any) => p.slug !== 'home')
+      .map((p: any) => ({ slug: p.slug }))
+  } catch {
+    // DB not reachable at build time — fall back to on-demand generation
+    return []
+  }
 }
 
 type Props = { params: Promise<{ slug: string }> }

@@ -1,5 +1,6 @@
 import type { CollectionConfig } from 'payload'
 import { allBlocks } from '../blocks'
+import { slugField } from '../fields/slugField'
 
 export const Pages: CollectionConfig = {
   slug: 'pages',
@@ -12,13 +13,7 @@ export const Pages: CollectionConfig = {
   access: { read: () => true },
   fields: [
     { name: 'title', type: 'text', required: true, localized: true },
-    {
-      name: 'slug',
-      type: 'text',
-      required: true,
-      unique: true,
-      admin: { position: 'sidebar' },
-    },
+    slugField('title'),
     {
       name: 'layout',
       type: 'blocks',

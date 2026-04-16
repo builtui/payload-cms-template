@@ -55,6 +55,61 @@ Labels in admin: `M3 Text-Bild Split`. Blocks are NOT included in the template �
 - New pages created after build are generated on-demand on first visit, then cached
 - `next.config.ts` has `images.remotePatterns` configured for Payload media URLs
 
+**IMPORTANT — `generateStaticParams` must be wrapped in try/catch:**
+```tsx
+export async function generateStaticParams() {
+  try {
+    const payload = await getPayload({ config })
+    const pages = await payload.find({ collection: 'pages', limit: 100 })
+    return pages.docs.map((p: any) => ({ slug: p.slug }))
+  } catch {
+    // DB not reachable at build time — fall back to on-demand generation
+    return []
+  }
+}
+```
+Without this, `pnpm build` fails if the DB is unreachable (common in CI environments where the build container has no DB access). With the fallback, Next.js generates pages on-demand on first visit — slightly slower for the first visitor but the build never fails.
+
+### Slug Handling
+The `slugField()` helper in `src/fields/slugField.ts` auto-generates URL-safe slugs from a source field via `slugify()`:
+```ts
+fields: [
+  { name: 'title', type: 'text', required: true },
+  slugField('title'),  // auto-generates from 'title', editor can override
+]
+```
+- German umlauts transliterated: `ö → oe`, `ä → ae`, `ü → ue`, `ß → ss`
+- Accented characters stripped: `á → a`, `ñ → n`, `ç → c`
+- Lowercased, special chars → hyphens, multiple hyphens collapsed
+- Works as `beforeValidate` hook → fires before unique-check, so sanitized slug is validated
+
+### Taxonomy Pattern (editor-managed tags)
+For categories/tags that editors should be able to manage (add, rename, delete), use a **separate collection** with a relationship field, NOT a static `select`:
+
+```ts
+// 1. Create a taxonomy collection (e.g. EventTypes)
+export const EventTypes: CollectionConfig = {
+  slug: 'event-types',
+  admin: { useAsTitle: 'name', group: 'Einstellungen' },
+  fields: [
+    { name: 'name', type: 'text', required: true },
+    slugField('name'),
+  ],
+}
+
+// 2. Reference it from the main collection with hasMany for multi-select
+{ name: 'types', type: 'relationship', relationTo: 'event-types', hasMany: true }
+```
+
+**Why not a static `select`?** Because adding/renaming options would require code changes. With a relationship, editors manage categories in the admin.
+
+### SEO Files (robots.txt + sitemap.xml)
+- `src/app/robots.ts` and `src/app/sitemap.ts` use Next.js' Metadata Route conventions
+- They must live in `src/app/` directly — **NOT** inside `(frontend)/` route group, because Next.js ignores route groups for metadata files
+- `robots.ts` blocks `/admin` and `/api` from crawlers
+- `sitemap.ts` queries the DB and generates entries for every Page — extend for additional collections (see inline comments)
+- Both use `NEXT_PUBLIC_SITE_URL` env var — set this to your production domain
+
 ## File Structure
 ```
 src/
@@ -125,3 +180,24 @@ rm -rf media/ && psql -d DB_NAME -c "DROP SCHEMA public CASCADE; CREATE SCHEMA p
 5. **Routes**: Update `src/app/(frontend)/` and `COLLECTION_PATHS` in SmartLink.tsx
 6. **Seed**: Copy `seed.example.ts` → `seed.ts`, fill with project content
 7. **Config**: Update `livePreview.url` mapping in `payload.config.ts`
+8. **Env**: Set `NEXT_PUBLIC_SITE_URL` in `.env` (used by robots.ts + sitemap.ts)
+9. **Sitemap**: Extend `src/app/sitemap.ts` when you add content collections
+10. **Images**: Add your production domain to `images.remotePatterns` in `next.config.ts`
+
+## Production Deployment
+
+### Seed vs Migrations
+- `pnpm seed` is for **local development only** — it drops the schema and re-populates with demo data
+- In production, use **migrations** via `pnpm payload migrate` to create/update tables safely
+- The first user is created via the admin UI on first visit (`/admin` → "Create First User"), never via seed
+- Never run `pnpm seed` against a production database — it will destroy all data
+
+### Pre-deployment Checklist
+- [ ] Generate strong `PAYLOAD_SECRET`: `openssl rand -hex 32`
+- [ ] Set `DATABASE_URL` to production Postgres (with password)
+- [ ] Set `NEXT_PUBLIC_SITE_URL` to the canonical production URL
+- [ ] Add production domain to `images.remotePatterns` in `next.config.ts`
+- [ ] Configure email adapter (for password reset) — e.g. `@payloadcms/email-nodemailer`
+- [ ] Consider S3-compatible media storage (`@payloadcms/storage-s3`) — local `staticDir` loses files on each redeploy
+- [ ] Run `pnpm build` locally to verify it compiles cleanly
+- [ ] Set up automatic DB backups (Supabase/Neon/Railway usually provide this)
