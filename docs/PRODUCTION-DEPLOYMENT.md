@@ -659,6 +659,53 @@ gibt's verwaiste `_locales`-Tabellen-Rows mit alten Locale-Codes. Cleanup:
 DELETE FROM <collection>_locales WHERE _locale NOT IN ('de', 'en');
 ```
 
+### Video-Transcode-Hook: `operation !== 'create'` blockt Re-Uploads
+
+Wenn die Site Video-Uploads mit Auto-Transcoding hat (MOV → WebM via ffmpeg in
+einem `afterChange`-Hook), ist folgendes Pattern ein stiller Killer:
+
+```ts
+// ❌ FALSCH — blockt bei Admin-Reupload
+export const transcodeVideoToWebm: CollectionAfterChangeHook = async ({ doc, operation }) => {
+  if (operation !== 'create') return doc
+  // ... transcode
+}
+```
+
+**Warum es bricht:** Wenn ein Video-Item z.B. beim ersten Seed ohne ffmpeg angelegt
+wurde (kein `webmUrl`) und du im Admin auf dem Item "Datei ersetzen" machst, feuert
+Payload ein `update`-Event — der Hook returned früh, transcode läuft nie. Der
+einzige Workaround den Editor*innen noch haben: ein **neues** Item anlegen und
+überall die Referenzen umbiegen. Das schiebt Müll in die Media-Library und bricht
+Block-Referenzen.
+
+**Richtig** — bei Update transcoden wenn Datei gewechselt wurde oder `webmUrl`
+fehlt (Recovery-Fall):
+
+```ts
+export const transcodeVideoToWebm: CollectionAfterChangeHook = async ({
+  doc, previousDoc, operation, req,
+}) => {
+  if (!doc?.mimeType || !VIDEO_MIMES.includes(doc.mimeType)) return doc
+  if (doc.mimeType === 'video/webm') return doc
+
+  if (operation === 'update') {
+    const filenameChanged = previousDoc?.filename && previousDoc.filename !== doc.filename
+    if (!filenameChanged && doc.webmUrl) return doc
+  } else if (doc.webmUrl) {
+    return doc
+  }
+
+  // ... ffmpeg spawn + update(doc, { webmUrl })
+}
+```
+
+**Bonus-Gotcha:** `spawn('ffmpeg', ...)` fehlschlägt mit `ENOENT` wenn ffmpeg nicht
+im `$PATH` des PM2-Prozesses liegt. PM2-System-Service erbt den PATH aus
+`/etc/environment` beim systemd-Start — nicht aus deinem interaktiven Shell-ENV.
+Wenn du ffmpeg nach PM2-Start installierst, `systemctl restart pm2-<app>` nicht
+vergessen.
+
 ---
 
 ## Sicherheits-Audit-Quick-Check
