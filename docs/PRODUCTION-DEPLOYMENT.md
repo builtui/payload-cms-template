@@ -97,9 +97,20 @@ EOF
 sshd -t && systemctl reload ssh
 ```
 
-**`ffmpeg`** wird vom Payload-Sharp-Pipeline für Video-Transcoding gebraucht
-(`@payloadcms/plugin-form-builder` oder Upload-Hooks für Videos). Wenn es fehlt,
-schlägt der Upload mit `spawn ffmpeg ENOENT` fehl, ohne klare Diagnose.
+**`ffmpeg` ist nicht optional, wenn die Site Video-Uploads enthält.**
+
+Payload nutzt ffmpeg für Video-Transcoding (z.B. MOV → webm). Wenn ffmpeg fehlt,
+**failt der Transcode silent** — der Upload wirft nur eine WARN-Zeile
+(`[transcode] spawn failed: spawn ffmpeg ENOENT. Is ffmpeg installed?`),
+das Original-MOV wird gespeichert, aber **kein webm generiert**. Die Datei landet
+als unbenutzbares Dead-Item in der Media-Library, ohne sichtbaren Error im Admin.
+
+Besonders tückisch beim ersten **Seed-Run** mit Videos: Der Seed läuft scheinbar
+erfolgreich durch, aber die betroffenen Media-Items sind kaputt. Lösung dann:
+ffmpeg installieren, im Admin das Video löschen und neu hochladen (Payload
+generiert die transcoded-Variante on-upload, nicht on-demand).
+
+Daher: ffmpeg **immer mit installieren**, auch wenn die Site aktuell nur Bilder hat.
 
 ---
 
