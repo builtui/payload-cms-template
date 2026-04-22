@@ -31,6 +31,16 @@ export function makeWrapperFields(defaults: WrapperDefaults = {}): Field {
     },
     fields: [
       {
+        name: 'hidden',
+        type: 'checkbox',
+        defaultValue: false,
+        admin: {
+          description:
+            'Section temporär ausblenden — der Block bleibt im Layout gespeichert, wird aber nicht gerendert. Der Block-Header zeigt dann "🚫 Ausgeblendet:" als Hinweis.',
+          width: '100%',
+        },
+      },
+      {
         name: 'paddingTop',
         type: 'select',
         defaultValue: paddingTop,
