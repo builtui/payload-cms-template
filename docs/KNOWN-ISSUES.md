@@ -243,6 +243,59 @@ systemctl restart pm2-<app>   # PATH neu einlesen
 **Fix:** Bei `update` prüfen, ob Filename sich geändert hat ODER `webmUrl` fehlt (Recovery).
 **Deep-Dive:** [DEPLOYMENT.md — Video-Transcode-Hook](DEPLOYMENT.md).
 
+### Video-Audio klingt verzerrt / pumpt
+**Symptom:** Transcoded WebM spielt ab, aber Audio hat hörbare Artefakte —
+"Pumpen" bei Peaks, metallischer Unterton, sporadisches Knirschen. Besonders
+bei kurzen Handy-Voice-Recordings.
+
+**Ursache-Kandidaten (nach Häufigkeit):**
+
+1. **CBR bei niedriger Bitrate.** `-b:a 96k` *ohne* `-vbr on` heißt
+   constant bitrate: Peaks werden gestaucht, Stille verbraucht dieselbe
+   Bandbreite wie Sprache. Resultat: Pumping.
+2. **Samplerate-Mismatch raten lassen.** Kein explizites `-ar 48000` →
+   Opus und swresample verhandeln die Rate pro Stream neu; bei 44.1 kHz
+   Source gibt's subtile Resampling-Glitches (Opus braucht 48 kHz intern).
+3. **Mono-Input ohne `-ac`.** Browser-Decoder-Pfade für Mono-Opus sind
+   historisch weniger getestet als für Stereo.
+4. **`-application voip`** (Opus-Auto-Detect) statt `audio` — komprimiert
+   "sprachähnliche" Signale aggressiver, verzerrt aber Musik / Umgebungston.
+
+**Fix (Encoder-Flags):**
+```bash
+-c:a libopus -b:a 128k -vbr on -compression_level 10 \
+-ar 48000 -ac 2 -application audio
+```
+- VBR mit 128k Zielrate (statt CBR 96k) → sauber bei Peaks, sparsam bei Stille.
+- Explizit 48 kHz + Stereo-Upmix → konsistenter Decoder-Pfad.
+- `compression_level 10` = max Qualität (langsamer encode; irrelevant weil
+  fire-and-forget im Background).
+
+**Wichtig:** 44.1 kHz ist bei Opus/WebM nicht möglich ohne doppeltes
+Resampling. Wer das Original-Audio bit-identisch behalten will, muss den
+Container-Output auf MP4 wechseln (AAC ist in WebM nicht erlaubt) und
+`-c:a copy` nutzen — dann keine Opus-Transcodierung mehr.
+
+**Deep-Dive:** [FEATURES.md — Video-Transcoding](FEATURES.md).
+
+### Re-Transcode eines bestehenden WebM-Files
+**Symptom:** Encoder-Flags im Hook wurden verbessert, aber existierende WebMs
+hängen noch mit alten Einstellungen in der Media-Library.
+
+**Fix (Server-seitig, ohne Admin-Reupload):**
+```bash
+cd /opt/<app>/media
+sudo -u <app> ffmpeg -y -i <file>.MOV \
+  -c:v libvpx-vp9 -crf 32 -b:v 0 -deadline good -cpu-used 4 \
+  -c:a libopus -b:a 128k -vbr on -compression_level 10 \
+  -ar 48000 -ac 2 -application audio \
+  <file>.webm
+```
+
+`webm_url` in der DB ist bereits gesetzt — File einfach überschreiben,
+Frontend liefert den neuen Stream beim nächsten Request aus. Keine
+DB-Aktion nötig, es sei denn der Dateiname ändert sich.
+
 ---
 
 ## nginx / Reverse Proxy

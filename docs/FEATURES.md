@@ -234,7 +234,38 @@ Features, die **in den 3 live-Projekten** gebaut wurden und bei Bedarf ins Templ
 - **Recovery-Pattern:** bei Update ohne `webmUrl` (z.B. ffmpeg fehlte beim ersten Upload) wird erneut transcodet
 - **Voraussetzung:** ffmpeg auf dem Server (siehe [DEPLOYMENT.md §1](DEPLOYMENT.md))
 
-**Siehe:** [KNOWN-ISSUES.md — Video-Upload blockt Re-Uploads](KNOWN-ISSUES.md)
+**Empfohlene Encoder-Flags** (ludwigmoeller-getestet):
+```bash
+ffmpeg -y -i input.mov \
+  # Video
+  -c:v libvpx-vp9 -crf 32 -b:v 0 -deadline good -cpu-used 4 \
+  # Audio — Details unten
+  -c:a libopus -b:a 128k -vbr on -compression_level 10 \
+  -ar 48000 -ac 2 -application audio \
+  output.webm
+```
+
+**Warum diese Audio-Flags — nicht-trivial:**
+
+- **`-ar 48000` ist non-negotiable bei Opus.** Opus hat nach Codec-Spec
+  *nur* 48 kHz als native Samplerate — keine 44.1 kHz-Variante existiert.
+  Wer `-ar 44100` setzt, bekommt doppeltes Resampling (Source → 44.1 via
+  swr → 48 intern durch libopus). Einmal auf 48 resamplen ist sauberer.
+  Will man 44.1 nativ behalten, muss der Container gewechselt werden (MP4 +
+  AAC, nicht WebM).
+- **`-ac 2` (Stereo-Upmix).** Browser-Decoder-Pfade sind für Stereo-Opus
+  besser abgedeckt als für Mono-Streams. Handy-Aufnahmen sind oft mono;
+  explizit upmixen konstant ist zuverlässiger als Opus-interne Heuristik.
+- **`-vbr on -compression_level 10`.** Variable Bitrate bei höchster
+  Qualität. CBR bei niedrigen Bitraten (z.B. `-b:a 96k` CBR) erzeugt
+  hörbares Pumping bei Signal-Peaks. Mit VBR ist die `-b:a`-Zahl ein
+  Zielwert, nicht Maximum — Opus nimmt bei Stille wenig, bei Peaks mehr.
+- **`-application audio`.** Opus auto-detected sonst zwischen `voip`,
+  `audio`, `lowdelay` — bei kurzen Handy-Recordings oft falsch geraten.
+
+**Siehe:**
+- [KNOWN-ISSUES.md — Video-Upload blockt Re-Uploads](KNOWN-ISSUES.md)
+- [KNOWN-ISSUES.md — Video-Audio klingt verzerrt / pumpt](KNOWN-ISSUES.md)
 
 ### Package-Configurator (boothside)
 **Use-Case:** Interactive Preis-Konfigurator (Tier-Auswahl + Medium-Mix).
