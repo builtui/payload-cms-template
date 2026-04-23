@@ -1,10 +1,14 @@
-# Boothside — Learnings, Settings, Patterns
+# Learnings & Patterns
 
-Alles, was wir beim Aufbau des Boothside-CMS entschieden, debuggt und etabliert
-haben. Kuratiert so, dass es mit den Learnings anderer Projekte auf
-Template-Ebene zusammengeführt werden kann.
+Sammelstelle für Entscheidungen, Patterns und Bug-Hintergründe, die sich beim Aufbau der abgeleiteten Projekte bewährt haben. Primär aus dem `boothside`-Projekt konsolidiert, ergänzt durch Erfahrungen aus `ludwigmoeller` und `hugenottenhaus` (siehe [PROJECTS.md](PROJECTS.md)).
 
-Kategorien:
+**Benutzung:**
+- Suchst du einen konkreten Bug? → [KNOWN-ISSUES.md](KNOWN-ISSUES.md) (Quick-Lookup)
+- Willst du die Background-Story / das *Warum*? → hier drin
+- Setup eines neuen Projekts? → [NEW-PROJECT.md](NEW-PROJECT.md)
+- Deployment? → [DEPLOYMENT.md](DEPLOYMENT.md)
+
+**Kategorien:**
 1. [Architektur-Entscheidungen](#1-architektur-entscheidungen)
 2. [Payload-CMS-Gotchas](#2-payload-cms-gotchas)
 3. [i18n / Lokalisierung](#3-i18n--lokalisierung)
@@ -15,6 +19,8 @@ Kategorien:
 8. [Content-vs-Layout-Trennung](#8-content-vs-layout-trennung)
 9. [Bugs, die sich wiederholen können](#9-bugs-die-sich-wiederholen-können)
 10. [Template-Kandidaten](#10-template-kandidaten)
+
+> Projekt-spezifische Eigenheiten (Domains, IPs, Vault-Namen, Brand-Tokens) stehen am Ende im [Anhang: Projekt-Spezifika](#anhang-projekt-spezifika) — die nicht ins Template übernehmen.
 
 ---
 

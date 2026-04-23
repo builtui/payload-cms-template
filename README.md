@@ -116,9 +116,18 @@ export const Hero: Block = {
 | `NavLinks` | Client component with active state via `usePathname()` |
 | `MobileMenu` | Portal-based overlay with clip-path animation |
 
-## Architecture
+## Documentation
 
-See [CLAUDE.md](./CLAUDE.md) for detailed architecture documentation, coding conventions, and known pitfalls.
+| File | Purpose |
+|---|---|
+| [CLAUDE.md](./CLAUDE.md) | Architecture, coding conventions, doc index (auto-loaded in Claude sessions) |
+| [docs/NEW-PROJECT.md](./docs/NEW-PROJECT.md) | Day-1 playbook — how to derive a new project from this template |
+| [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Production setup on Hetzner Cloud (PM2 + systemd + nginx + SSL) |
+| [docs/FEATURES.md](./docs/FEATURES.md) | Feature catalog (core + opt-in + pattern library from deployed projects) |
+| [docs/LEARNINGS.md](./docs/LEARNINGS.md) | Decisions, patterns, bug backgrounds — the "why" behind the template |
+| [docs/KNOWN-ISSUES.md](./docs/KNOWN-ISSUES.md) | Quick-lookup: symptom → fix for common bugs |
+| [docs/SECURITY-AUDIT.md](./docs/SECURITY-AUDIT.md) | Pre-launch + quarterly audit checklist |
+| [docs/PROJECTS.md](./docs/PROJECTS.md) | Registry of projects derived from this template |
 
 ## Tech Stack
 

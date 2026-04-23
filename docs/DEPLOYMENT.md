@@ -1,11 +1,16 @@
 # Production Deployment — Payload CMS + Next.js auf Hetzner Cloud
 
-Konsolidierte Setup-Anleitung und Learnings aus zwei Live-Deployments dieses Templates
-(`boothside.com`, `ludwigmoeller.de`). Beschreibt den **nativen Stack** — Docker ist
-für single-tenant, single-site Deployments overkill.
+Konsolidierte Setup-Anleitung für den **nativen Stack** (PM2 + systemd + nginx + PostgreSQL + Let's Encrypt). Bewährt an Live-Deployments (`boothside.com`, `ludwigmoeller.de` nutzen leichte Varianten — siehe [PROJECTS.md](PROJECTS.md) für Abweichungen).
 
-> **TL;DR:** Hetzner CX22 (Ubuntu 24.04) → nginx + PM2 + systemd + Postgres + Let's Encrypt.
-> Kein Docker. Kein Caddy. ~30 Min von "fresh VM" bis "live mit SSL".
+Verwandte Docs:
+- [NEW-PROJECT.md](NEW-PROJECT.md) — vorher, Phase 1 + 2 (Bootstrap + Customization)
+- [SECURITY-AUDIT.md](SECURITY-AUDIT.md) — nach dem Setup, vor Go-Live
+- [KNOWN-ISSUES.md](KNOWN-ISSUES.md) — wenn beim Deploy was schiefgeht
+- [LEARNINGS.md §6](LEARNINGS.md) — Deploy-Flow-Commands, Hintergründe
+
+> **TL;DR:** Hetzner CX22 (Ubuntu 24.04) → nginx + PM2 + systemd + Postgres + Let's Encrypt. Kein Docker, kein Caddy. ~30 Min von "fresh VM" bis "live mit SSL".
+
+> **Docker/Caddy-Variante:** `ludwigmoeller` nutzt Docker + Caddy statt nativ (siehe `/Users/bugbox/dev/ludwigmoeller/payload/Dockerfile` + `Caddyfile`). Für Single-Site-Deployments ist der native Stack leichtgewichtiger; für Multi-Service/CI-CD lohnt sich Docker.
 
 ---
 
