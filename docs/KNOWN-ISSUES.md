@@ -296,6 +296,70 @@ sudo -u <app> ffmpeg -y -i <file>.MOV \
 Frontend liefert den neuen Stream beim nächsten Request aus. Keine
 DB-Aktion nötig, es sei denn der Dateiname ändert sich.
 
+### `<video>` in CSS-Grid sprengt Track, frisst Gap
+**Symptom:** Ein CSS-Grid-Block mit zwei Kindern (z.B. Image + Video im
+`m15-image-video-split`-Muster) zeigt technisch korrekten Gap (DevTools
+Grid-Overlay und `getComputedStyle` sagen "gap funktioniert"), aber
+**visuell liegen die Kinder direkt aneinander** — kein sichtbarer Abstand.
+Eines der Tiles (das Video) wirkt im echten Browser merklich breiter
+als im Screenshot-Test oder während Dev-Reload.
+
+**Ursache (häufig und schwer zu finden):** Ein `<video>`-Element meldet
+nach Metadata-Load seine **intrinsische Video-Breite** (z.B. 1920×1080)
+an den Parent. Grid-Items haben per Default `min-width: auto`, was nach
+CSS-Spec `min-content` bedeutet — und für `<video>` ist `min-content`
+genau die native Video-Breite. Ergebnis: Der Track wächst über `1fr` hinaus,
+das Nachbar-Tile wird visuell überdeckt, der Gap verschwindet.
+
+**Warum headless-Tests das oft übersehen:** Puppeteer/headless-Chrome
+mit `readyState: 0` hat das Video noch nicht geladen → `videoWidth: 0`
+→ kein Überlauf → Messungen sehen korrekt aus. Im echten Browser mit
+`preload="metadata"` lädt die Dimension nach wenigen 100ms und der
+Layout-Shift passiert.
+
+**Fix:**
+```css
+/* Klassischer Grid-Overflow-Fix: min-width: 0 auf die Grid-Items */
+.image-video-split__image,
+.image-video-split__video {
+  min-width: 0;
+}
+```
+
+Zusätzlich sauberer (aber nicht strikt nötig): Video in einen absolut
+positionierten Inner-Wrapper packen, damit es komplett aus dem normalen
+Flow isoliert ist:
+
+```tsx
+<div className="image-video-split__video">
+  <div className="image-video-split__video-inner">
+    <video controls preload="metadata" playsInline>
+      {video.webmUrl && <source src={video.webmUrl} type="video/webm" />}
+      <source src={video.url} type={video.mimeType || 'video/mp4'} />
+    </video>
+  </div>
+</div>
+```
+
+```css
+.image-video-split__video-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+```
+
+**Anti-Pattern** (führt zu demselben Symptom aus anderer Richtung): Wer
+dem Video-Tile ein `aspect-ratio: 4/3` gibt, um es höhengleich zum
+Image-Tile zu halten, triggert dieselbe Expansion: Bei `height`
+(geerbt via `align-items: stretch`) und explizitem `aspect-ratio`
+berechnet der Browser die **Width aus Height × Ratio** und ignoriert
+die `1fr`-Track-Breite wieder. Lösung: Höhe per `align-items: stretch`
+vom Image-Tile (dessen `aspect-ratio` definiert die Track-Höhe) erben
+lassen — ohne zusätzliches `aspect-ratio` auf dem Video-Tile.
+
 ---
 
 ## nginx / Reverse Proxy
