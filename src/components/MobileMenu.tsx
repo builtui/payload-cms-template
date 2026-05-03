@@ -12,6 +12,23 @@ type Props = {
   instagram?: string
 }
 
+/**
+ * Full-viewport mobile menu. Two non-obvious choices baked in:
+ *
+ * 1. Overlay covers the FULL viewport (top: 0, height: 100dvh) — not
+ *    `top: 56px` with the header poking through. A semi-transparent
+ *    header on top of the overlay would let page content shimmer through.
+ *    The trade-off: the header's close button is now hidden behind the
+ *    overlay, so we render an in-overlay close button as a replacement.
+ *
+ * 2. `100dvh` instead of `100vh`: iOS Safari's collapsing toolbar makes
+ *    `100vh` overshoot the visible area. `dvh` tracks the dynamic viewport.
+ *
+ * The component is portaled into `document.body` to escape ancestor
+ * stacking contexts (the header's `z-50`) and to dodge the `position: fixed`
+ * containing-block trap (any ancestor with `transform`, `filter`,
+ * `perspective`, or `will-change` re-anchors `position: fixed`).
+ */
 export function MobileMenu({ navItems, addressShort, instagram }: Props) {
   const [isOpen, setIsOpen] = useState(false)
   const [isVisible, setIsVisible] = useState(false)
@@ -52,13 +69,13 @@ export function MobileMenu({ navItems, addressShort, instagram }: Props) {
           aria-label="Navigation"
           style={{
             position: 'fixed',
-            top: '56px',
+            top: 0,
             left: 0,
             width: '100vw',
-            height: 'calc(100vh - 56px)',
-            backgroundColor: 'rgba(245, 242, 237, 0.90)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
+            height: '100dvh',
+            backgroundColor: 'rgba(245, 242, 237, 0.97)',
+            backdropFilter: 'blur(14px)',
+            WebkitBackdropFilter: 'blur(14px)',
             zIndex: 9999,
             display: 'flex',
             flexDirection: 'column',
@@ -66,6 +83,18 @@ export function MobileMenu({ navItems, addressShort, instagram }: Props) {
             transition: 'clip-path 0.3s ease-out',
           }}
         >
+          {/* In-overlay close button — replaces the header's button while open */}
+          <div className="flex justify-end px-6 pt-6 pb-2">
+            <button
+              type="button"
+              onClick={close}
+              className="text-[12px] font-bold tracking-[0.1em] uppercase"
+              aria-label="Menü schliessen"
+            >
+              Schliessen
+            </button>
+          </div>
+
           <nav className="flex-1 flex flex-col justify-center px-6 gap-4">
             {navItems.map((item) => (
               <Link
@@ -91,12 +120,12 @@ export function MobileMenu({ navItems, addressShort, instagram }: Props) {
   return (
     <>
       <button
-        onClick={isOpen ? close : open}
+        onClick={open}
         className="md:hidden text-[12px] font-bold tracking-[0.1em] uppercase"
         aria-expanded={isOpen}
         aria-controls="mobile-nav"
       >
-        {isOpen ? 'Schliessen' : 'Menu'}
+        Menu
       </button>
       {overlay}
     </>

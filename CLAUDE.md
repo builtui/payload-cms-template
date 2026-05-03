@@ -84,13 +84,15 @@ Labels im Admin: `M3 Text-Bild Split`. **Blocks sind NICHT im Template enthalten
 - `SmartLink`-Component wählt Icon automatisch: `ArrowRight →` für Internal, `ArrowUpRight ↗` für External
 - `COLLECTION_PATHS` in `SmartLink.tsx` definiert URL-Präfixe pro Collection
 
-### Image Handling
-- Payload auto-generiert: `thumbnail` (400×300), `card` (768×576), `hero` (1920px)
+### Image / Media Handling
+- Payload auto-generiert: `thumbnail` (400×300, cropped), `card` (768×576, cropped), plus aspect-preserving `small-w` (800), `medium-w` (1280), `hero` (1920)
 - `formatOptions: { format: 'webp', quality: 82 }` konvertiert alle Uploads zu WebP
-- `PayloadImage`-Component nutzt Next.js `<Image fill>` für Lazy-Loading + srcset + Format-Negotiation
-- IMMER `PayloadImage` in einem Container mit `className="relative"` + aspect-ratio verwenden
+- `PayloadImage` rendert ein nacktes `<img>` mit Sharp-srcset, geht direkt über CDN — Next.js Image-Optimizer wird übersprungen. Trade-offs siehe [LEARNINGS.md §11.7](docs/LEARNINGS.md#117-direct-cdn-payloadimage-skip-nextjs-image-optimizer).
+- IMMER `PayloadImage` / `PayloadMedia` in einem Container mit `className="relative"` + aspect-ratio + `overflow-hidden` verwenden
 - `sizes` prop explizit setzen: `"(min-width: 768px) 58vw, 100vw"` für 7/12-Col-Blocks
-- Media-Collection hat `folder` select-Field für Organisation
+- **`<PayloadMedia>` statt `<PayloadImage>` benutzen, wenn das Field auch Video sein kann** — auto-pickt nach mimeType. Companion: `isVideoMedia(media)`.
+- Media-Collection benutzt Payloads native Folders (`folders: true`) für Organisation — keine hardcoded `folder`-Select-Felder mehr.
+- CDN-Host via `NEXT_PUBLIC_MEDIA_CDN_URL` env. Empty = Origin-Serving (lokale Dev).
 
 ### Performance (ISR/SSG)
 - Alle Pages `export const revalidate = 60` — static cache, regeneriert alle 60 Sekunden
@@ -150,11 +152,21 @@ Warum: Static `select` bräuchte Code-Changes für Option-Add/Rename. Mit Relati
 
 ## Key Rules — Code
 
+### Build (Next.js 16)
+Production-Build wird mit `--webpack` gepinnt (siehe `package.json`). Turbopack-Prod ist in Next 16 instabil — generiert intermittent kein `pages-manifest.json`, meldet aber "Compiled successfully". Rationale + Re-Eval-Trigger: [LEARNINGS.md §11.1](docs/LEARNINGS.md#111-nextjs-16-webpack-pinnen-turbopack-prod-ist-instabil).
+
+### Deployment
+`scripts/deploy.sh` ist die Referenz. Configurable via env (`APP_NAME`, `REPO_DIR`, `BRANCH`, `SMOKE_URL`). NIEMALS `pnpm build && pm2 restart` chainen (tail-masks-exit-code-Falle), niemals nested `ssh + sudo + bash -c "..."` mit Quote-Escaping (`$?` wird vom OUTER Shell expandiert). Beide Anti-Patterns dokumentiert in [DEPLOYMENT.md](docs/DEPLOYMENT.md#updates-deployen--scripted-empfohlen).
+
+### Currency formatting (locale-aware)
+Niemals manuell Tausender-Trenner einfügen. `formatCurrency(value, locale)` aus `src/lib/formatCurrency.ts` benutzen — `Intl.NumberFormat` macht Separator + Symbol-Position automatisch (`de-DE` → `1.500 €`, `en-GB` → `€1,500`, `de-CH` → `CHF 1’500`). Neue Märkte: eine Zeile in `LOCALE_MAP`.
+
 ### Tailwind CSS v4 + Preflight
 - Preflight setzt `margin: 0` auf ALLEN Elementen. **Nie** auf Browser-Defaults verlassen.
 - **NIEMALS** `margin: revert` auf `*` — zerstört Layouts.
 - Utility-Classes (`mb-8`, `pt-4`) überschreiben Preflight weil `@layer utilities` > `@layer base`.
 - Wenn eine Tailwind-Class nicht greift → prüfen, ob sie im compiled CSS existiert (Content Detection).
+- **`overflow-x: clip` (NICHT `hidden`) auf `html, body`** für no-horizontal-scroll. `hidden` erzeugt einen scroll-containing-block, der `position: sticky` in jedem Descendant bricht. Siehe [LEARNINGS.md §11.2](docs/LEARNINGS.md#112-overflow-x-clip-nicht-hidden-auf-html-body).
 
 ### Section Labels
 Immer `mb-6 md:mb-8` für Section-Labels (konsistent mit Prototype). Keine Sonderlösungen.
@@ -163,7 +175,11 @@ Immer `mb-6 md:mb-8` für Section-Labels (konsistent mit Prototype). Keine Sonde
 ALLE `@payloadcms/*` Packages MÜSSEN die gleiche Version haben. Payload checkt das beim Startup — bei Mismatch failed's mit eindeutiger Fehlermeldung.
 
 ### Mobile Menu
-Via `createPortal(element, document.body)` gerendert, um den Stacking-Context des Headers (`z-50`) zu entkommen.
+Via `createPortal(element, document.body)` gerendert — wegen zwei Fallen:
+- Stacking-Context des Headers (`z-50`) entkommen
+- `position: fixed` Containing-Block-Falle (jeder Ancestor mit `transform`, `filter`, `perspective`, `will-change` re-anchored fixed-Children)
+
+Full-Viewport-Overlay: `top: 0; height: 100dvh` (NICHT `100vh` — iOS Safari's einklappende Toolbar lässt `100vh` überschiessen). Header bleibt unter dem Overlay → In-Overlay-Close-Button rendern. Siehe `MobileMenu.tsx`.
 
 ### Server vs Client Components
 - **Server Components** (async, default): Event-Lists, Project-Cards, Artist-Features — queryen DB direkt
@@ -222,7 +238,9 @@ rm -rf media/ && psql -d DB_NAME -c "DROP SCHEMA public CASCADE; CREATE SCHEMA p
 | Blocks in mehreren Collections | In JEDE Block-Liste eintragen. |
 | Custom Admin-Component | `pnpm generate:importmap` danach. |
 | Schema-Change auf Prod | `pnpm payload migrate:create <name>` (nicht `db.push`). |
-| Deploy | `.next/{server,static,types,build-manifest.json,app-build-manifest.json}` löschen, NICHT ganzer `.next`-Ordner (killt Image-Cache). |
+| Deploy | `scripts/deploy.sh` benutzen — niemals `pnpm build && pm2 restart` chainen, niemals nested `ssh + bash -c "..."`. Für selektives Cache-Preserving: `.next/{server,static,types,build-manifest.json,app-build-manifest.json}` löschen, NICHT ganzer `.next`-Ordner. |
+| Neue Sharp-`imageSize` ergänzen | DB-Migration für die neuen Spalten erstellen + `scripts/regenerate-image-sizes.mjs` für Alt-Uploads laufen lassen + CDN-URLs für die Variante purgen. |
+| Video-Poster-Encoding ändern | `scripts/regenerate-video-posters.sh` für Alt-Uploads laufen lassen + CDN-Pattern `*-poster.webp` purgen. |
 | Neue Collection mit Live Preview | `payload.config.ts → livePreview.url` mapping ergänzen. |
 | Pre-Launch → Go-Live | [SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) durchlaufen. Basic Auth + X-Robots-Tag raus. |
 | Neues Referenz-Projekt abgeleitet | Eintrag in [PROJECTS.md](docs/PROJECTS.md) nachtragen. |

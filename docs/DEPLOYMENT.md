@@ -551,6 +551,88 @@ sudo -u <app> -H bash -c 'cd /opt/<app> && \
 
 ---
 
+## Updates deployen — scripted (empfohlen)
+
+Statt jedes Deploy als langer `ssh '... bash -c "..."'`-One-Liner: das Template
+liefert ein `scripts/deploy.sh`, das auf dem Server liegt und mit einem
+einzigen `ssh`-Aufruf gestartet wird. Damit verschwinden zwei reproduzierte
+Klassen von Prod-Incidents (siehe Anti-Patterns unten).
+
+```bash
+# Lokal — nach git push:
+ssh HOST "sudo -u $APP_USER -i $REPO_DIR/scripts/deploy.sh [BRANCH]"
+```
+
+Konfigurierbar via Env-Variablen (`APP_NAME`, `REPO_DIR`, `BRANCH`,
+`SMOKE_URL`). Standardwerte siehe Script-Header.
+
+Was das Script macht:
+1. `git fetch` + `git reset --hard origin/$BRANCH`
+2. `pnpm payload migrate`
+3. `rm -rf .next` (für saubere Webpack-Builds — siehe GOTCHA #6 für die
+   Begründung, wann selektiv gereinigt werden sollte)
+4. `pnpm build > /tmp/deploy.log 2>&1` — bei Failure: Tail loggen + abort
+5. `pm2 restart $APP_NAME`
+6. Smoke-Check via `curl` auf den lokalen Port — bei != 200 abort
+
+`set -euo pipefail` im Header sorgt dafür, dass keine Stufe stillschweigend
+übersprungen wird.
+
+### Anti-Pattern A: `pnpm build 2>&1 | tail -N && pm2 restart`
+
+`tail` returniert exit 0 auch wenn `pnpm build` failed. → `pm2 restart`
+läuft trotzdem → broken/missing `.next` → Crash-Loop. **Hat Boothside einmal
+runtergenommen.** Lösung: `if pnpm build > log 2>&1; then ...; else ...; fi`
+mit echtem Exit-Code-Check, ODER `set -euo pipefail` im Wrapper.
+
+### Anti-Pattern B: nested `ssh + sudo + bash -c "..."` mit Quote-Escaping
+
+```bash
+# DAS HIER NICHT MACHEN:
+ssh host 'sudo -u user -i bash -c "pnpm build; X=\$?; if [ \$X -eq 0 ]; ..."'
+```
+
+Der OUTER-Remote-Shell expandiert `$?` innerhalb des `bash -c`-Doppelquote-
+Arguments BEVOR der Inner-Bash es zu sehen bekommt → Variablen leer →
+`if [ -eq 0 ]` failed mit `unary operator expected`. Umfasst auch alle
+weiteren `\$VAR`-Konstrukte im inneren Script.
+
+**Lösung**: Real-Script auf dem Server ablegen (`scripts/deploy.sh`),
+mit einem einzigen `ssh`-Call ohne `bash -c`-Verschachtelung starten.
+
+### Webpack-Pinning rationale
+
+Das Template-Build-Script enthält `next build --webpack`. Hintergrund: Next
+16's default Turbopack-Production-Build generiert intermittent
+**`pages-manifest.json` nicht**, meldet aber "Compiled successfully". Der
+Server crasht erst zur Runtime mit `InvariantError`. ~15s länger pro Build,
+dafür reproduzierbar. Re-Evaluierung: Next 17 GA + 3 Monate Stabilität.
+
+### Drizzle-Snapshot-Drift recovern
+
+Raw-SQL-Migrations (z.B. nachträgliche `ALTER TABLE`-Steps) updaten Drizzles
+`.json`-Snapshot nicht. Spätere `migrate:create`-Runs schlagen dann
+destructive Reverts vor. Recovery:
+
+1. `pnpm payload migrate:create snapshot_rebase` interaktiv. Bei jedem
+   Prompt "rename" für reine Renames, "create" für Neues antworten.
+2. Die generierte `.ts`-SQL durch No-Ops ersetzen — der `.json`-Snapshot ist
+   das eigentliche Artefakt, das man wollte.
+3. Migration läuft als reiner Tracking-Marker durch. Zukünftige
+   Generationen diff'en gegen die rebased Baseline.
+
+### CDN-Cache-Invalidation nach Re-Processing
+
+`scripts/regenerate-image-sizes.mjs` und `scripts/regenerate-video-posters.sh`
+erzeugen Files mit **gleichen URLs**. CDN serviert die alte Version weiter
+bis TTL (Bunny default: 1 Woche). Optionen:
+
+- Manuell: spezifische URL-Patterns im Bunny-Dashboard purgen
+- Scripted: Bunny-Purge-API-Call ans Ende der Regen-Scripts hängen (braucht
+  API-Key)
+
+---
+
 ## Pre-Launch → Go-Live Checkliste
 
 Wenn die Site öffentlich gehen soll:

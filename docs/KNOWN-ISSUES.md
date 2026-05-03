@@ -14,6 +14,7 @@ Deep-Dive-Verweise gehen in `LEARNINGS.md` (Detail-Erklärungen) oder `DEPLOYMEN
 - [Datenbank & Migrations](#datenbank--migrations)
 - [i18n / Lokalisierung](#i18n--lokalisierung)
 - [Bilder & Performance](#bilder--performance)
+- [CSS / Layout](#css--layout)
 - [nginx / Reverse Proxy](#nginx--reverse-proxy)
 - [PM2 / systemd / Server](#pm2--systemd--server)
 - [Admin-UI](#admin-ui)
@@ -69,6 +70,24 @@ pnpm build
 **Ursache:** `output: 'standalone'` ist für Docker gedacht. Bei PM2/nativem `next start` stimmen die Pfade nicht.
 **Fix:** `output: 'standalone'` aus `next.config.ts` entfernen (oder nie reinschreiben).
 **Deep-Dive:** [DEPLOYMENT.md — output standalone](DEPLOYMENT.md).
+
+### `next build` "Compiled successfully" → Server crasht mit `Could not find pages manifest`
+**Symptom:** Build meldet "Compiled successfully", `pm2 restart` läuft sauber, aber jeder Request resultiert in `InvariantError: Could not find pages manifest` (500). Datei `pages-manifest.json` fehlt im `.next/server/`.
+**Ursache:** Next.js 16 Default-Production-Build via Turbopack ist intermittent kaputt — Manifest wird nicht generiert.
+**Fix:** Build mit Webpack pinnen — `next build --webpack` (ist im Template-`package.json` so eingestellt).
+**Deep-Dive:** [LEARNINGS.md §11.1 — Webpack pinnen](LEARNINGS.md#111-nextjs-16-webpack-pinnen-turbopack-prod-ist-instabil).
+
+### Site nach Deploy down: pm2 restartet auf broken `.next`
+**Symptom:** Build "succeeded" (laut Deploy-Log), trotzdem 502/Crash-Loop.
+**Ursache:** Klassisch — `pnpm build 2>&1 | tail -N && pm2 restart`. `tail` returniert exit 0 auch bei Build-Failure, das `&&` greift fälschlich, pm2 startet ohne `.next`.
+**Fix:** Niemals `&&` zwischen Build und Restart. Wrapper-Script mit `set -euo pipefail` + echtem `if/then/else` um den Build legen — `scripts/deploy.sh` im Template ist die Referenz.
+**Deep-Dive:** [DEPLOYMENT.md — Anti-Pattern A](DEPLOYMENT.md#anti-pattern-a-pnpm-build-21--tail-n--pm2-restart).
+
+### `bash: [: -eq: unary operator expected` während ssh-Deploy
+**Symptom:** Inline-Deploy via `ssh host 'sudo -u user -i bash -c "..."'`, im Log taucht `unary operator expected` auf, Variablen scheinen leer.
+**Ursache:** Outer-Remote-Shell expandiert `$?` (und alle `\$VAR`-Konstrukte) im `bash -c`-Doppelquote-Argument BEVOR der Inner-Bash sie sieht. Quote-Escape-Hell, fundamentell unzuverlässig.
+**Fix:** Real-Script ablegen (`scripts/deploy.sh`), mit einem einzigen `ssh`-Call ohne `bash -c` starten: `ssh host 'sudo -u user -i /path/to/deploy.sh'`.
+**Deep-Dive:** [DEPLOYMENT.md — Anti-Pattern B](DEPLOYMENT.md#anti-pattern-b-nested-ssh--sudo--bash--c--mit-quote-escaping).
 
 ---
 
@@ -186,6 +205,11 @@ DELETE FROM <collection>_locales WHERE _locale NOT IN ('de', 'en');
 ```sql
 SELECT _locale, col FROM table_locales ORDER BY _locale LIMIT 8;
 ```
+
+### `migrate:create` schlägt destructive Reverts vor (Drizzle-Snapshot-Drift)
+**Symptom:** Eine soeben gerade nochmal `migrate:create`-aufgerufene Migration enthält `DROP COLUMN`s für Spalten, die du nie weghaben wolltest.
+**Ursache:** Eine vorherige Raw-SQL-Migration hat das DB-Schema verändert, Drizzles `.json`-Snapshot aber nicht mit-aktualisiert. Drizzle diff't gegen die alte Baseline.
+**Fix:** Snapshot rebasen — siehe [LEARNINGS.md §11.10](LEARNINGS.md#1110-drizzle-snapshot-drift-recovern). Kurz: `migrate:create snapshot_rebase` interaktiv durchspielen, dann die generierte SQL durch No-Ops ersetzen, der `.json`-Snapshot ist das Artefakt.
 
 ---
 
@@ -359,6 +383,48 @@ berechnet der Browser die **Width aus Height × Ratio** und ignoriert
 die `1fr`-Track-Breite wieder. Lösung: Höhe per `align-items: stretch`
 vom Image-Tile (dessen `aspect-ratio` definiert die Track-Höhe) erben
 lassen — ohne zusätzliches `aspect-ratio` auf dem Video-Tile.
+
+### Neue Sharp-`imageSize` greift auf Alt-Uploads nicht
+**Symptom:** Nach Hinzufügen einer neuen `imageSizes`-Variante (z.B. `medium-w`) fehlen die zugehörigen URLs / DB-Spalten für bereits existierende Media-Docs. PayloadImage's srcset enthält nur `hero` + Original.
+**Ursache:** Sharp generiert Varianten nur **bei Upload**. Alte Docs bleiben mit den alten Varianten.
+**Fix (zwei Schritte):**
+1. Drizzle-Migration für die neuen DB-Spalten (`_url`, `_width`, `_height`, `_filesize`, `_mime_type`, `_filename`, `_focal_x`, `_focal_y` für jede neue Variante in jeder localized-Tabelle).
+2. `pnpm exec node scripts/regenerate-image-sizes.mjs` re-uploaded jedes Bild durch Payloads API → Sharp generiert die fehlenden Varianten + updated `doc.sizes`.
+
+CDN-Cache: Re-Uploads behalten dieselbe URL → CDN serviert die alte Version bis TTL. Manuell purgen.
+
+### CDN serviert alte Version nach Re-Processing (Bunny / Cloudflare / etc.)
+**Symptom:** `regenerate-image-sizes.mjs` oder `regenerate-video-posters.sh` lief erfolgreich, Origin liefert die neuen Bytes — Browser bekommt aber weiter die alte Version.
+**Ursache:** CDN serviert URL-cached. Re-Generated Files behalten die URL.
+**Fix:** Spezifische URL-Patterns im CDN-Dashboard purgen (Bunny: "Purge by URL"). Optional: Purge-API-Call ans Ende der Regen-Scripts hängen.
+
+---
+
+## CSS / Layout
+
+### `position: sticky` funktioniert plötzlich nicht mehr
+**Symptom:** Eine sticky Nav (oder andere `position: sticky`-Element) bleibt nicht mehr oben kleben — verhält sich wie `position: relative`.
+**Ursache:** Ein Ancestor (typisch: `html`, `body`, oder ein Layout-Wrapper) hat `overflow: hidden`, `overflow-x: hidden`, oder `overflow-y: hidden`. Das erzeugt einen scroll-containing-block, sticky braucht aber den nächsten **scrollenden** Ancestor.
+**Fix:** `overflow-x: clip` (oder `overflow: clip`) statt `hidden` benutzen. Visuell identisch, kein containing-block. Beide brauchen es: `html, body { overflow-x: clip }`.
+**Browser-Support:** Chrome 90+, Safari 16+, Firefox 81+ (2026 unbedenklich).
+**Deep-Dive:** [LEARNINGS.md §11.2](LEARNINGS.md#112-overflow-x-clip-nicht-hidden-auf-html-body).
+
+### Mobile-Menü / Modal sitzt nach Scroll an der falschen Stelle
+**Symptom:** Ein `position: fixed`-Element verhält sich wie `position: absolute` — sitzt nicht relativ zum Viewport sondern relativ zu einem Ancestor.
+**Ursache:** Ein Ancestor hat `transform`, `filter`, `perspective`, oder `will-change` gesetzt → das macht ihn zum containing-block für `position: fixed`-Descendants.
+**Fix:** Element via `createPortal(element, document.body)` aus dem Stacking-Kontext rausspielen. Siehe `MobileMenu.tsx` als Referenz.
+**Deep-Dive:** [LEARNINGS.md §11.4](LEARNINGS.md#114-position-fixed-containing-block-falle).
+
+### Mobile Modal lässt unten einen leeren Streifen frei (iOS Safari)
+**Symptom:** Full-screen-Overlay mit `height: 100vh` sieht auf iOS am unteren Rand abgeschnitten aus, oder lässt einen Streifen Page-Content sichtbar.
+**Ursache:** iOS Safaris einklappende URL-Bar verändert die Viewport-Höhe dynamisch. `100vh` ist die "größte mögliche" Höhe, nicht die aktuell sichtbare.
+**Fix:** `height: 100dvh` benutzen (dynamic viewport height). Tracked die aktuell sichtbare Höhe inkl. Toolbar-State.
+**Deep-Dive:** [LEARNINGS.md §11.3](LEARNINGS.md#113-100dvh-statt-100vh-für-full-viewport-overlays).
+
+### Mobile-Menü zeigt darunter liegendes Page-Content "shimmer-through"
+**Symptom:** Beim Öffnen des mobile Menüs scheinen Teile der Page (z.B. ein autoplay-Video im Hintergrund) durch.
+**Ursache:** Das Overlay startet erst unterhalb des Headers (z.B. `top: 56px`); der Header ist semi-transparent und liegt darüber.
+**Fix:** Overlay covered den **vollen Viewport** (`top: 0; height: 100dvh`). Damit der Close-Button erreichbar bleibt: einen In-Overlay-Close-Button rendern (siehe `MobileMenu.tsx`).
 
 ---
 

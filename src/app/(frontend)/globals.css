@@ -31,12 +31,18 @@
    Base Styles
    ======================================== */
 
-body {
+html, body {
   background-color: var(--color-warm-white);
   color: var(--color-deep-black);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
+  /* `clip` instead of `hidden` is critical: `overflow: hidden` creates a
+     scroll-containing-block which silently breaks `position: sticky` for every
+     descendant. `clip` produces the same visual no-horizontal-scroll result
+     without the containing-block side-effect. Both `html` AND `body` need it —
+     iOS Safari ignores body-only.
+     Browser support: Chrome 90+, Safari 16+, Firefox 81+. */
+  overflow-x: clip;
 }
 
 /* ========================================

@@ -1097,6 +1097,178 @@ SMTP_FROM=noreply@example.com
 
 ---
 
+## 11. Boothside 2026 — Neue Erkenntnisse
+
+Aus der Boothside-Session Mai 2026 (Next.js 16, Postgres, Bunny CDN). Diese
+Punkte sind durch echte Prod-Incidents oder Lighthouse-Iterationen entstanden.
+
+### 11.1 Next.js 16: Webpack pinnen (Turbopack-Prod ist instabil)
+
+`next build` defaultet seit Next 16 auf Turbopack. Production-Build-Turbopack
+generiert intermittent **`pages-manifest.json` nicht**, meldet aber
+"Compiled successfully". Der Server crasht dann erst bei Runtime mit
+`InvariantError: Could not find pages manifest`. Hat Boothside einmal
+runtergenommen.
+
+Fix im Template: `package.json` build-Script enthält `--webpack`.
+
+```json
+"build": "cross-env NODE_OPTIONS=\"--no-deprecation --max-old-space-size=8000\" next build --webpack"
+```
+
+Webpack-Build dauert ~15s länger pro Deploy, ist aber reproduzierbar.
+**Re-Evaluierung**: Next 17 GA + 3 Monate Community-Stabilität abwarten.
+
+### 11.2 `overflow-x: clip` (nicht `hidden`) auf html, body
+
+Klassische "no horizontal scroll"-Direktive ist `overflow-x: hidden` — die
+**bricht aber `position: sticky` in jedem Descendant**. Grund: `overflow:
+hidden` erzeugt einen scroll-containing-block; sticky braucht aber den
+nächsten scrollenden Ancestor.
+
+`overflow-x: clip` ergibt visuell dasselbe (kein Horizontal-Scroll), erzeugt
+aber **keinen** containing-block → sticky funktioniert weiter.
+
+```css
+html, body {
+  overflow-x: clip;  /* nicht: hidden */
+}
+```
+
+Beide brauchen es (html UND body) — iOS Safari ignoriert body-only.
+Browser-Support: Chrome 90+, Safari 16+, Firefox 81+ → unbedenklich 2026.
+
+### 11.3 `100dvh` statt `100vh` für Full-Viewport-Overlays
+
+iOS Safaris einklappende Toolbar lässt `100vh` über den sichtbaren Bereich
+hinausschiessen. Mobile-Menüs / Modals → `height: 100dvh` benutzen, dann
+sitzen sie sauber im sichtbaren Viewport.
+
+Im Template: `MobileMenu.tsx` deckt mit `top: 0; height: 100dvh` den
+gesamten sichtbaren Viewport ab — und braucht deshalb einen In-Overlay-
+Close-Button (der Header mit dessen Close-Button liegt unter dem Overlay).
+
+### 11.4 `position: fixed` Containing-Block-Falle
+
+Jeder Ancestor mit `transform`, `filter`, `perspective`, oder `will-change`
+verwandelt `position: fixed` in `position: absolute` relativ zu diesem
+Ancestor. Symptom: "Mobile-Menu / Modal sitzt nach Scroll an der falschen
+Stelle." Lösung: per `createPortal(element, document.body)` aus dem
+Stacking-Kontext rausspielen — siehe `MobileMenu.tsx`.
+
+### 11.5 Sharp `imageSizes`: aspect-preserving Varianten ergänzen
+
+```ts
+imageSizes: [
+  { name: 'thumbnail', width: 400,  height: 300, position: 'centre' },  // cropped
+  { name: 'card',      width: 768,  height: 576, position: 'centre' },  // cropped
+  { name: 'small-w',   width: 800,  height: undefined, position: 'centre' },  // ASPECT-PRESERVING
+  { name: 'medium-w',  width: 1280, height: undefined, position: 'centre' },  // ASPECT-PRESERVING
+  { name: 'hero',      width: 1920, height: undefined, position: 'centre' },  // ASPECT-PRESERVING
+]
+```
+
+Die aspect-preserving Varianten sind das, was `PayloadImage`'s srcset
+benutzt. Cropped-Varianten würden in beliebigen Container-Aspect-Ratios
+mis-framen (zeigen einen anderen Bildausschnitt als das Original).
+
+**Migration-Hinweis**: Beim nachträglichen Hinzufügen einer Sharp-Variante
+braucht es BEIDES — Drizzle-Migration für die neuen DB-Spalten + Re-Upload
+der alten Bilder via `scripts/regenerate-image-sizes.mjs`.
+
+### 11.6 PayloadMedia (Single-Slot Media-Field)
+
+Statt separates `image` + `video` Feld pro Block: ein einziges `media`-
+Upload-Feld. `<PayloadMedia>` pickt zur Render-Zeit nach `mimeType` ob
+`<PayloadImage>` oder `<PayloadVideo>` gerendert wird.
+
+Vorteile:
+- Editor muss nicht vorab entscheiden, welcher Medientyp in den Slot passt
+- Schema-Cleanup (1 Feld statt 2)
+- Migration einfacher, wenn Content-Typ später wechselt
+
+Companion-Helper: `isVideoMedia(media)` für Branching-UI (z.B. "Play-Button
+nur bei Standbildern overlayen").
+
+### 11.7 Direct-CDN PayloadImage (skip Next.js Image-Optimizer)
+
+`PayloadImage.tsx` rendert ein nacktes `<img>` mit srcset aus den Sharp-
+Varianten — **nicht** Next.js' `<Image>`. Die Bytes streamen direkt von der
+CDN-Edge statt durchs Next.js' `/_next/image` durchgereicht zu werden.
+
+Trade-offs:
+- ✓ Edge-Delivery (echtes CDN, nicht Origin-Pull)
+- ✓ Weniger Bandbreite auf dem App-Server
+- ✗ Coarser srcset-Granularität (nur die pre-generated Sharp-Sizes)
+- → CDN-side Image-Optimizer dazuschalten (Bunny: $9.50/mo) wenn Image-
+  Bandwidth zum Engpass wird
+
+CDN-Host wird via `NEXT_PUBLIC_MEDIA_CDN_URL` env (im Template
+`src/lib/mediaUrl.ts`) gesetzt. Empty env = Origin-Serving für lokale Dev.
+
+### 11.8 Locale-aware Currency Formatting
+
+`Intl.NumberFormat` per BCP-47-Tag macht Tausender/Dezimal/Symbol-Position
+automatisch:
+
+- `de-DE` → `1.500 €`
+- `en-GB` → `€1,500`
+- `de-CH` → `CHF 1’500` (Apostroph-Prime als Tausender-Trenner!)
+
+Im Template: `src/lib/formatCurrency.ts` mit `LOCALE_MAP` (URL-Locale →
+BCP-47). Neue Märkte = eine Zeile in der Map.
+
+### 11.9 Sharp Video-Poster: Cap auf 1200w / Quality 78
+
+`scripts/transcode-video.sh` cappt Poster-Frames auf 1200px Breite (Quality
+78 statt 82). Selbst 16:9-Hero-Videos rendern auf typischen Desktops <
+1000px breit — 1200w ist Retina-genug, alles darüber wäre verschwendete
+Bytes. Q78 ist nicht sichtbar von Q82 zu unterscheiden bei Material, das
+nur eine Sekunde flackert bevor das Video startet.
+
+Spart messbar Bandbreite ohne sichtbaren Quality-Loss.
+
+### 11.10 Drizzle-Snapshot-Drift recovern
+
+Raw-SQL-Migrations updaten Drizzles `.json`-Snapshot **nicht**. Wenn man
+später `migrate:create` läuft, schlägt es destructive Reverts vor.
+Recovery-Pattern:
+
+1. `pnpm payload migrate:create snapshot_rebase` interaktiv laufen lassen.
+   "rename" für jeden Spalten-Rename-Prompt antworten, "create" für
+   genuinely Neues.
+2. Die generierte `.ts`-SQL durch No-Ops ersetzen — der `.json`-Snapshot
+   ist das eigentliche Artefakt, das man wollte.
+3. Migration läuft als reine Tracking-Marker-Eintrag durch. Zukünftige
+   Generationen diff'en gegen die rebased Baseline.
+
+### 11.11 Native Folders feature für Media
+
+Statt hardcoded `folder` select-Field die native Payload-Folders-Feature:
+
+```ts
+// In der Collection:
+folders: true
+
+// In payload.config.ts:
+folders: { browseByFolder: true }
+```
+
+Echter Folder-Tree im Admin (drag-drop, nesting). **Wichtig**: Das
+deprecated `folder` select-Feld muss komplett entfernt werden — der Name
+kollidiert mit Payloads auto-injected `folder`-Relationship. Rename-
+Workaround funktioniert nicht.
+
+### 11.12 Lighthouse-Noise (gegen LCP-Hetzerei impfen)
+
+Lighthouse-LCP variiert ±300–500ms zwischen Runs auf demselben Build
+(Bandbreiten-Schwankung, Cold-vs-Warm CDN, CPU-Throttling). Erst nach
+3+ Runs gegen die Median bewerten, sonst hetzt man echten Optimierungen
+hinter Mess-Noise hinterher. Ein scheinbarer 0,2s-Regress nach Deploy ist
+fast immer Cache-Cold + Run-Noise, kein echter Code-Regress.
+
+---
+
 ## Anhang: Projekt-Spezifika
 
 **Nur für Boothside — nicht ins Template übernehmen**:
