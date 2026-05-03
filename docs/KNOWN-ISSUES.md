@@ -402,6 +402,25 @@ CDN-Cache: Re-Uploads behalten dieselbe URL → CDN serviert die alte Version bi
 
 ## CSS / Layout
 
+### Tag-Swap zwischen `<h3>` und `<h5>` zeigt KEINEN visuellen Unterschied
+**Symptom:** A11y-Audit verlangt einen heading-order-Fix (z.B. `<h5>` → `<h3>`); nach dem Tag-Swap zeigt die Page in DevTools / Visual-Diff null Veränderung. Vermutung: "der Fix hat nicht gegriffen". Tatsächlich hat er — er ist nur unsichtbar.
+**Ursache:** Tailwind v4's Preflight resettet ALLE default-Heading-Größen. `<h1>`-`<h6>` haben dieselbe Computed-Size wie `<p>`, bis eine Tailwind-Utility das überschreibt. Wenn beide Tags dieselbe Utility-Class tragen (`text-3xl font-bold`), rendern sie identisch — der Tag-Wechsel ist eine reine Semantik-Änderung.
+**Fix:** Akzeptieren, dass heading-order-Fixes oft Visual-Diff-frei sind. Verifikation via Lighthouse a11y oder Browser-DevTools "Accessibility Tree", nicht via Screenshot-Compare.
+**Deep-Dive:** [LEARNINGS.md §12.6](LEARNINGS.md#126-a11y-ist-ein-schema-choice-kein-polish-sprint-am-ende).
+
+### Lighthouse-Color-Contrast-Issues bei dekorativen Elementen
+**Symptom:** Lighthouse meldet Contrast-Issues für absichtlich low-contrast Elemente — z.B. große graue Section-Nummern in `text-mute-2`, dekorative Trenn-Striche.
+**Ursache:** Audit behandelt sie als Content. Sie sind aber visual rhythm, kein Lese-Material.
+**Fix:** `aria-hidden="true"` auf das Element. Removed es aus dem Accessibility-Tree → Lighthouse hört auf zu meckern → Screenreader liest's nicht vor (was korrekt ist, weil Editor "07" oder "✦" nicht hören will).
+**Anti-Pattern:** `display: none` — entfernt es auch visuell. `aria-hidden` hält es sichtbar aber semantisch unsichtbar.
+**Deep-Dive:** [LEARNINGS.md §12.6](LEARNINGS.md#126-a11y-ist-ein-schema-choice-kein-polish-sprint-am-ende).
+
+### Lighthouse-LCP "Regression" nach Deploy, die keine ist
+**Symptom:** LCP war im Pre-Deploy-Run 2.8s, Post-Deploy 3.2s — "der letzte Change hat performance-regressed".
+**Ursache:** Lighthouse-LCP variiert ±300–500ms zwischen Runs auf identischem Build (CDN-Cold-Cache, CPU-Throttling-Lottery, Bandwidth-Schwankung). Single-Run-Vergleich ist Mess-Noise, nicht Code-Regression.
+**Fix:** Pre/Post-Deploy je 3+ Runs, gegen Median vergleichen. Bei <500ms-Differenz: keine Regression annehmen. Erst bei konsistentem Drift über 5+ Runs ist ein Code-Diff verdächtig.
+**Deep-Dive:** [LEARNINGS.md §11.12](LEARNINGS.md#1112-lighthouse-noise-gegen-lcp-hetzerei-impfen).
+
 ### `position: sticky` funktioniert plötzlich nicht mehr
 **Symptom:** Eine sticky Nav (oder andere `position: sticky`-Element) bleibt nicht mehr oben kleben — verhält sich wie `position: relative`.
 **Ursache:** Ein Ancestor (typisch: `html`, `body`, oder ein Layout-Wrapper) hat `overflow: hidden`, `overflow-x: hidden`, oder `overflow-y: hidden`. Das erzeugt einen scroll-containing-block, sticky braucht aber den nächsten **scrollenden** Ancestor.

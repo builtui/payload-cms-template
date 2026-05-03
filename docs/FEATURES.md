@@ -84,6 +84,7 @@ Default-Wrapper-Felder: `paddingTop`, `paddingBottom`, `background`, `dividerTop
 - **Video-Consent-Gate** (3 States: no consent → placeholder, consent → poster+play, active → iframe)
 - YouTube: `youtube-nocookie.com`, Vimeo: `dnt=1`
 - Self-hosted Fonts (kein CDN)
+- **Tracking-Consent-Vertrag**: Banner dispatcht `cookie-consent-update` CustomEvent, Tracker subscriben → Banner und Tracker decoupled. Neuer Tracker = nur ein neuer Listener, keine Banner-Änderung. Siehe [LEARNINGS.md §12.5](LEARNINGS.md#125-tracking-consent-als-event-vertrag-nicht-als-if-chain).
 
 ### i18n (Basis-Config)
 - `localization.locales`: EN + DE, default DE, `fallback: true`
@@ -189,6 +190,34 @@ DOMAIN=example.com BASIC_AUTH="user:pass" ./scripts/security-audit.sh
 ```
 Output: PASS/WARN/FAIL pro Check + Log in `/tmp/audit-<date>.txt`.
 **Details:** [SECURITY-AUDIT.md](SECURITY-AUDIT.md)
+
+### Google Analytics 4 (`src/components/Analytics.tsx`)
+**Wann aktivieren:** Wenn das Projekt Web-Analytics will UND DSGVO-konform bleiben muss.
+**Warum:** Loaded GA4 erst nach expliziter `analytics`-Consent. Bis dahin wird kein Google-Request abgeschickt, kein Cookie gesetzt. Gegen das CookieBanner via `cookie-consent-update`-CustomEvent gekoppelt — kein Banner-Code muss angefasst werden.
+**Was es bringt:** Standard-konforme Tracking-Implementierung. Plus: korrektes SPA-Pageview-Tracking (gtag's default page_view feuert nur initial; bei Next.js Client-Routing manuell nachschiessen).
+
+**Aktivierung:**
+1. Field `analyticsId` (text) in `SiteSettings` ergänzen — ist im Template-Default schon da.
+2. In `src/app/(frontend)/layout.tsx` (oder `[locale]/layout.tsx`):
+   ```tsx
+   const settings = await payload.findGlobal({ slug: 'site-settings' })
+   return (
+     <html>
+       <body>
+         {children}
+         <CookieBanner />
+         <Analytics id={settings.analyticsId} />
+       </body>
+     </html>
+   )
+   ```
+3. Im Admin → Einstellungen → Site Settings → `analyticsId` auf `G-XXXXXXXXXX` setzen.
+
+**Zusätzliche Tracker** (Plausible, HotJar, etc.) folgen demselben Pattern: eigene Component bauen, `cookie-consent-update`-Listener registrieren, je nach Kategorie (`analytics` vs `marketing`) gaten. Banner braucht nichts.
+
+**Caveat:** gtag.js kann nach Mount nicht clean entladen werden. Wenn der User Consent zurücknimmt, wirkt das erst beim nächsten Reload — daher exposed das Default-Banner bewusst kein Revoke-Toggle.
+
+**Deep-Dive:** [LEARNINGS.md §12.5 — Tracking-Consent-Vertrag](LEARNINGS.md#125-tracking-consent-als-event-vertrag-nicht-als-if-chain).
 
 ### `BlockRowLabel` Custom Component
 Admin-Custom-Component für Block-Header. Zeigt Block-Type, Summary und Hidden-Status.

@@ -1267,6 +1267,214 @@ Lighthouse-LCP variiert ±300–500ms zwischen Runs auf demselben Build
 hinter Mess-Noise hinterher. Ein scheinbarer 0,2s-Regress nach Deploy ist
 fast immer Cache-Cold + Run-Noise, kein echter Code-Regress.
 
+**Prinzip übertragbar**: Bei jeder Mess-getriebenen Änderung (LCP, TTFB,
+Bundle-Size, …) erst Median über 3+ Runs etablieren, *dann* erst
+Code-Diff bewerten. Single-Run-Vergleich ist Lottogeld.
+
+---
+
+## 12. Module-Bau, Übersetzbarkeit, Tracking — Prinzipien
+
+Aus der Boothside-Session 2026 destilliert. Die §11-Punkte beschreiben
+*was* (Code-Patterns), §12 beschreibt *warum-so* — übertragbar auf jedes
+nächste Projekt, auch wenn die konkrete Codezeile anders aussieht.
+
+### 12.1 Pflegbarkeitsregel: Was der Editor sehen können muss, lebt im CMS
+
+**Symptom (anti)**: Eine Seite zeigt eine Headline, die der Editor in der
+Admin-UI nirgends finden kann — sie steht hardcoded in einem
+Route-Wrapper (`app/[locale]/work/page.tsx`) als String. Editor will sie
+ändern → Developer-Ticket → 3 Tage Vorlauf.
+
+**Regel**: *Wenn Editor X erreichen können soll, lebt X im CMS.* Die Route
+ist ein dünner Wrapper, der einen `Page`-Doc per Slug fetcht und Blocks
+rendert. Hardcoded Strings in Route-Templates sind Schulden, die jeden
+Übersetzungs-Sprint blockieren.
+
+**Beispiele aus Boothside**:
+- Archive-Index-Seiten (`/work`, `/blog`, `/trade-shows`) sind regulär
+  CMS-Seiten mit `isArchive: true` + Hero-Block + Collection-List-Block
+- Footer-Spalten 2-N als Array auf dem `footer`-Global, nicht 3 hardcoded
+  H5-Sektionen aus drei verschiedenen Sources
+- CTAs, Section-Labels, Slogans → Felder, niemals JSX-Strings
+
+Faustregel: Wenn ein Wort übersetzt oder geändert werden könnte, ist es
+ein Field. Der einzige sauber-hardcodebare String in einem Block-
+Component ist der Tailwind-Class-Name.
+
+### 12.2 "One Element, One Source" — Editor-UI-Konsolidierung
+
+**Symptom (anti)**: Footer hat 3 Spalten. Spalte 1 kommt aus
+`SiteSettings.tagline`, Spalte 2 aus `Navigation.footerLinks`, Spalte 3
+aus `Footer.legalLinks`. Editor weiß nie, *wo* er was ändert.
+
+**Regel**: Wenn der User EIN UI-Element sieht (= "der Footer"), dann
+sollte der Editor EIN Feld dafür haben (oder ein Array das alle
+Spalten-Variationen erzeugt). Verteilung über drei Globals ist
+Architektur-Bequemlichkeit, die der Editor bezahlt.
+
+**Pattern**: `footer.columns` als Array, jeder Eintrag eine Spalte mit
+`heading` + `links[]`. Legal-Links sind dann einfach eine `columns[3]`-
+Variation. Logo + Slogan in `columns[1]` bleibt eine Ausnahme weil sie
+strukturell in Site-Settings gehört (für Header/Meta-Tags) — dann aber
+explizit in der Schema-Description erwähnen: *"Spalten 2-N. Spalte 1
+ist Logo + Slogan und kommt aus den Site Settings."*
+
+### 12.3 Übersetzbarkeit ist eine Schema-Disziplin, kein Code-Patch
+
+**Symptom (anti)**: "Wir launchen erstmal in DE, EN machen wir später"
+führt regelmäßig zu Schema-Refactor + Datenmigration zwei Monate später.
+
+**Regel**: Jedes Editor-facing Text-Field bekommt von Tag 1 an
+`localized: true`. Auch wenn nur eine Sprache aktiv ist. Kosten: ein
+Bool. Ersparnis: keine `_locales`-Migration über existierende Daten.
+
+**Detail-Regeln**:
+- `localization.fallback: true` und `defaultLocale` setzen — DE-leere
+  Felder rendern dann EN, statt der Page leer zu lassen während
+  übersetzt wird.
+- Locale aus `params` durchreichen (NIEMALS `headers()` lesen — siehe §3).
+- Layout-Updates pro Locale gehen über `mergeLocalized` — sonst killt
+  ein DE-Save die EN-Items (siehe §2 Localized-Array-Quirk).
+- Schema-Description in der Sprache des Editors. Code-Identifier dürfen
+  englisch bleiben (`siteName`, `analyticsId`), aber `description: 'Wird
+  im Copyright und Meta-Tags verwendet'` erspart 80% der Editor-
+  Rückfragen.
+- Locale-bewusstes Currency-Formatting via `formatCurrency(value, locale)`
+  (siehe §11.8) — niemals `value.toLocaleString()` + manuell €/CHF
+  reinfrickeln.
+
+### 12.4 Block-Bau-Prinzipien (Wrapper-System als Vertrag)
+
+Das Wrapper/Container-System (`BlockWrapper` mit `<section>` + `.edge` +
+`paddingTop`/`paddingBottom`/`background`/`dividerTop`/`dividerBottom`)
+ist nicht "ein Helper", es ist ein **Vertrag**. Wer ihn bricht, zerstört
+die Pflegbarkeit:
+
+- **0px zwischen Blocks** — Spacing kommt EXKLUSIV aus dem Wrapper.
+  Keine `mt-12` auf dem ersten Element im Block. Sonst kann der Editor
+  nicht mehr per `paddingTop`-Slider den Abstand justieren.
+- **Background nur am Wrapper** — nicht am inneren Content-Container.
+  Sonst macht der Editor ihn `transparent` und es bleibt ein farbiger
+  Streifen.
+- **Block-Typen-Liste IMMER vollständig pflegen** — neuer Block muss in
+  ALLE relevanten `allBlocks`/`detailBlocks`/`blogBlocks`-Arrays
+  eingetragen werden, sonst dropt Payload ihn beim Seed silent (siehe
+  KNOWN-ISSUES.md).
+- **Block-Numbering als shared language** — `m1-page-title`, `m2-hero`,
+  `m15-image-video-split`. Wenn Design ein "M7" zeigt, weiß Code +
+  Editor sofort welcher Block.
+- **Hidden-Toggle statt Delete** — `wrapper.hidden` Field auf jedem
+  Block, im Frontend gefiltert. Editor kann Module deaktivieren ohne
+  Inhalt zu verlieren.
+- **Layout-Felder am Block, nicht in der Page** — `paddingTop`/
+  `dividerTop`/etc. auf jedem Block, nicht zentral. So kann der Editor
+  pro Instanz feinjustieren.
+
+### 12.5 Tracking-Consent als Event-Vertrag (nicht als if-Chain)
+
+**Symptom (anti)**: GA4-Snippet in `_app.tsx` mit
+`if (window.localStorage.getItem('cookie-consent')?.includes('analytics'))`
+direkt im Render. Banner-Logik und Tracker-Logik sind verzahnt — neuer
+Tracker = überall mitziehen.
+
+**Regel**: Banner und Tracker kommunizieren über einen einzigen
+**CustomEvent-Vertrag** (`cookie-consent-update` mit Detail-Payload
+`{ necessary, analytics, marketing, externalMedia }`). Banner dispatcht,
+Tracker subscribed. Decoupled.
+
+```ts
+// Banner (template-CookieBanner.tsx):
+window.dispatchEvent(new CustomEvent('cookie-consent-update', { detail: state }))
+
+// Tracker (template-Analytics.tsx):
+window.addEventListener('cookie-consent-update', (e) => {
+  if (e.detail.analytics) load()
+})
+```
+
+Vorteile:
+- Neuer Tracker (HotJar, Plausible, …) braucht keine Banner-Änderung
+- Banner-Variante (1-Click-vs-Granular) tauschbar ohne Tracker-Anpassung
+- Returning Visitor: Tracker liest `localStorage` initial selbst —
+  funktioniert ohne Re-Dispatch beim Page-Load
+- Server kann via Cookie (`cookie-consent=1`) "consent-exists"
+  erkennen, *ohne* localStorage zu brauchen
+
+Implementierung: `src/components/Analytics.tsx` (GA4) + `CookieBanner.tsx`
+(4 Kategorien) im Template. ID lebt auf `site-settings.analyticsId`.
+Leer = kein Tracking, auch wenn Consent erteilt.
+
+### 12.6 A11y ist ein Schema-Choice, kein Polish-Sprint am Ende
+
+**Symptom (anti)**: A11y-Audit zwei Wochen vor Launch findet 47 Issues,
+davon 30 "color contrast", 12 "heading order", 5 "missing alt".
+
+**Regel**: A11y-Constraints in den Block-Bau einbauen, nicht hinterher
+fixen.
+
+**Konkret**:
+- **Heading-Order semantisch, nicht visuell**. Tailwind v4 Preflight
+  resettet `<h1>`-`<h6>` auf identische Größe — `<h3 className="text-3xl">`
+  und `<h5 className="text-3xl">` rendern *visuell gleich*. Tag-Swap
+  zwischen ihnen ist ein **rein semantischer A11y-Fix** ohne Diff. Wer
+  nach Visual-Diff prüft sieht nichts → fälschlich verworfen.
+- **Decorative Content via `aria-hidden`, nicht `display: none`**. Große
+  graue Section-Nummern, dekorative Icons, Trenn-Striche → gehören im
+  visual flow, aber nicht im a11y-tree. `aria-hidden="true"` löst das
+  + stoppt Lighthouse beim color-contrast-Flaggen.
+- **`alt`-Field required + localized auf Media-Collection**. Editor kann
+  einen Upload nicht ohne alt-Text speichern. Lieber 5 Sekunden
+  Editor-Friction als ein Audit-Issue später.
+- **Skip-Link** im Layout (`<a href="#main" className="skip-link">`),
+  Default-versteckt, sichtbar bei `:focus` — schon im Template-`globals.css`.
+
+### 12.7 Fehler-Suche: Root-Cause vor Workaround (Disziplin)
+
+Aus einer expliziten Boothside-Session-Direktive: *"wir suchen nicht
+nach schnellen oder alternativen Lösungen. wir suchen nach dem fehler
+den man beheben kann"*.
+
+**Regel**: Wenn Symptom auftritt → erst die *Mechanik* verstehen, dann
+fixen. Wenn der Fix den Mechanismus nicht erklären kann, ist es ein
+Workaround, kein Fix. Workarounds akkumulieren als Tech-Schuld; ein
+Mechanismus-Fix beseitigt eine ganze Bug-Klasse.
+
+**Beispiel**: Sticky-Nav broken. Workaround wäre `position: fixed` +
+manuelles Top-Management. Root-Cause: `overflow: hidden` erzeugt
+scroll-containing-block. Fix: `overflow: clip`. Ergebnis: alle sticky-
+Children der App profitieren, nicht nur die Nav.
+
+**Beispiel**: Build-Skript silent-fail. Workaround wäre "log mehr".
+Root-Cause: `tail` maskiert exit-code, `&&` greift fälschlich. Fix: `if
+build; then restart; fi` mit echtem Exit-Code-Check. Ergebnis: jedes
+zukünftige Build-Failure-Szenario abgedeckt, nicht nur das spezifische.
+
+**Praxis**: Wenn die einzige Option ein Workaround ist (Library-Bug,
+Browser-Bug), das **explizit als Workaround markieren** (Code-Comment +
+Re-Eval-Trigger), nicht als regulären Code tarnen. Webpack-Pinning in
+`package.json` ist genau so: Comment im Build-Script, Re-Eval-Trigger
+"Next 17 GA + 3 Monate Stabilität" in den Docs.
+
+### 12.8 Scope-Disziplin: Nur was gefragt wurde
+
+Aus der Memory-Datei `feedback_scope_discipline.md`: *"only do what was
+asked, never adjacent changes"*.
+
+**Regel**: Wenn der Auftrag "Fix den Hover-State auf den Pills" ist,
+dann werden NICHT nebenbei drei andere Components aufgeräumt. Auch wenn
+sie "while I'm here" naheliegen.
+
+**Warum so streng**: Adjacent-Changes erweitern den Diff, machen
+Reviews schwerer, erzeugen Merge-Konflikte, koppeln eigentlich
+unabhängige Änderungen aneinander. Plus: User behält Kontrolle über
+*was* sich wann ändert.
+
+**Praxis**: Wenn etwas Aufräum-würdig auftaucht während ich an A
+arbeite → entweder als Spawn-Task flaggen (bei Sessions die das
+unterstützen), oder als "FYI"-Notiz am Ende erwähnen — *nicht*
+inline mit-fixen.
+
 ---
 
 ## Anhang: Projekt-Spezifika

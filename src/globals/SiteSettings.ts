@@ -21,5 +21,13 @@ export const SiteSettings: GlobalConfig = {
     { name: 'openingHours', type: 'text', localized: true },
     { name: 'instagram', type: 'text' },
     { name: 'facebook', type: 'text' },
+    {
+      name: 'analyticsId',
+      type: 'text',
+      admin: {
+        description:
+          'Google Analytics 4 Measurement ID (z.B. G-XXXXXXXXXX). Leer lassen = kein Tracking. Wird erst nach Cookie-Zustimmung geladen — siehe Analytics-Component.',
+      },
+    },
   ],
 }

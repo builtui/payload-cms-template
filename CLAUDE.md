@@ -193,6 +193,7 @@ Client-Components mit `useSearchParams()` brauchen `<Suspense>` Wrapper, sonst b
 - Video Consent Gate: 3 States (no consent → placeholder, consent → poster+play, active → iframe)
 - Fonts + Icons self-hosted (no CDN)
 - "Load video once" = single consent (GDPR Art. 6 Abs. 1a)
+- **Tracking-Vertrag**: Banner und Tracker kommunizieren ausschliesslich über das `cookie-consent-update` CustomEvent + `localStorage['cookie-consent']`. Niemals direkten Banner-Import in Tracker-Components — neuer Tracker = neuer Listener, nicht Banner-Anpassung. Default-Tracker: `<Analytics id={siteSettings.analyticsId} />` aus `src/components/Analytics.tsx` (GA4, voll consent-gated). Siehe [LEARNINGS.md §12.5](docs/LEARNINGS.md#125-tracking-consent-als-event-vertrag-nicht-als-if-chain).
 
 ### Locale aus params (nicht aus headers())
 Wenn URL-Segmente-i18n aktiv ist: Locale IMMER aus `params` lesen, an jede Component durchreichen. `currentLocale()` via `headers()` macht alle Pages dynamic → kein ISR.
@@ -290,6 +291,43 @@ Siehe [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) + [docs/SECURITY-AUDIT.md](docs/S
 - [ ] fail2ban, DB-Backup-Cron
 - [ ] Image pre-warming via `pnpm prewarm`
 - [ ] Basic Auth pre-launch aktiv (bis Go-Live)
+
+---
+
+## Working Principles (Boothside-Session 2026)
+
+Diese Prinzipien stehen ÜBER dem konkreten Code — sie gelten für jedes
+nächste Projekt. Detail-Erklärungen + Beispiele in [LEARNINGS.md §12](docs/LEARNINGS.md#12-module-bau-übersetzbarkeit-tracking--prinzipien).
+
+### Pflegbarkeit
+- **Was Editor sehen können muss, lebt im CMS.** Hardcoded Strings in Route-Wrappern sind Schulden. Archive-Pages, Footer-Spalten, CTAs, Section-Labels → alles Felder.
+- **One Element, One Source.** Wenn der User EIN UI-Element sieht (= "der Footer"), bekommt der Editor EIN Feld dafür (oder ein Array). Verteilung über drei Globals ist Architektur-Bequemlichkeit, die der Editor bezahlt.
+- **Schema-Description in der Sprache des Editors.** Code-Identifier dürfen englisch bleiben, der `description`-String spart 80% der Editor-Rückfragen.
+
+### Übersetzbarkeit (von Tag 1)
+- **Jedes Editor-Text-Field bekommt `localized: true`** — auch wenn nur eine Sprache aktiv ist. Kosten: ein Bool. Ersparnis: keine `_locales`-Migration über existierende Daten.
+- **`fallback: true` + `defaultLocale`** — DE-leere Felder rendern EN, statt während Übersetzung leer zu bleiben.
+- **Locale aus `params`, NIEMALS `headers()`** (sonst kein SSG, siehe [§3](docs/LEARNINGS.md#3-i18n--lokalisierung)).
+- **Layout-Updates pro Locale via `mergeLocalized`** — sonst killt DE-Save die EN-Items.
+- **`formatCurrency(value, locale)`** statt `toLocaleString()` + manuell €/CHF reinfrickeln.
+
+### Block-Bau (Wrapper als Vertrag)
+- **0px zwischen Blocks** — Spacing ausschliesslich aus `paddingTop`/`paddingBottom` im Wrapper. Niemals `mt-12` auf dem ersten Element im Block-Inneren.
+- **Background nur am Wrapper**, nicht am Content-Container.
+- **Block in ALLE relevanten Block-Listen** (`allBlocks`/`detailBlocks`/`blogBlocks`) eintragen, sonst silent-Drop beim Seed.
+- **Block-Numbering als shared language**: `m1-page-title`, `m15-image-video-split` — Design ↔ Admin ↔ Code sprechen dieselbe Sprache.
+- **`wrapper.hidden` statt Delete** für deaktivierbare Module.
+- **Layout-Felder am Block, nicht in der Page** — Editor justiert pro Instanz.
+
+### A11y im Schema, nicht am Ende
+- **Heading-Order semantisch, nicht visuell.** Tailwind v4 Preflight macht alle h1–h6 visuell gleich → Tag-Swaps sind reine A11y-Fixes ohne visual diff.
+- **Decorative Elemente via `aria-hidden="true"`**, NICHT `display: none` (graue Section-Nummern, dekorative Trenn-Striche).
+- **`alt`-Field required + localized** auf Media-Collections — 5s Editor-Friction vs. ein Audit-Issue.
+
+### Arbeitsweise
+- **Root-Cause vor Workaround.** Wenn der Fix den Mechanismus nicht erklären kann, ist es ein Workaround. Workaround-explizit-markieren (Code-Comment + Re-Eval-Trigger), niemals als regulären Code tarnen.
+- **Scope-Disziplin.** Nur was gefragt wurde. Adjacent-Cleanup wandert in eine separate Notiz / Spawn-Task, nicht in den aktuellen Diff.
+- **Mess-Noise einrechnen.** Lighthouse / TTFB / Bundle-Size: Median aus 3+ Runs. Single-Run-Vergleich ist Lottogeld.
 
 ---
 
