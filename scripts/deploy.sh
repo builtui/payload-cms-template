@@ -44,6 +44,15 @@ git reset --hard "origin/$BRANCH" | tail -3
 echo "→ Migrating DB"
 pnpm payload migrate 2>&1 | tail -10
 
+# Regenerate the admin importMap so any new schema features (Lexical
+# LinkFeature collections, custom RowLabel components, custom admin
+# views, etc.) actually show up in the admin UI after deploy. The build
+# bundles this file, so it has to run BEFORE pnpm build, not after.
+# Skipping this step is silent: deploy reports green, the new feature
+# just doesn't appear in admin until the next build picks up the file.
+echo "→ Regenerating admin importMap"
+pnpm generate:importmap 2>&1 | tail -3
+
 echo "→ Building (webpack, output to $LOG)"
 rm -rf .next
 if pnpm build > "$LOG" 2>&1; then

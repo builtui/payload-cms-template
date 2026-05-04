@@ -1259,6 +1259,28 @@ deprecated `folder` select-Feld muss komplett entfernt werden — der Name
 kollidiert mit Payloads auto-injected `folder`-Relationship. Rename-
 Workaround funktioniert nicht.
 
+### 11.13 Deploy: importMap VOR Build, nicht danach
+
+**Symptom**: Schema-Erweiterung greift nicht im Admin-UI nach Deploy. Build ist grün, pm2 hat neu gestartet, neue Page lädt sauber, aber im Admin sieht der Editor das neue Feature nicht. Beispiele aus Boothside: `LinkFeature({ enabledCollections: ['pages'] })` für interne Links im RichText, neuer `BlockRowLabel`-Component, Custom-Sidebar-Field.
+
+**Ursache**: `src/app/(payload)/admin/importMap.js` wird beim Build von webpack gebundled. Wenn die Map vor dem Build nicht regeneriert wurde, bundlet der Build die alte Feature-Liste mit ein. Der Admin-Code im Browser kennt das neue Feature dann nicht. Nach `pnpm generate:importmap` allein passiert nichts — die Map muss durch einen erneuten Build laufen.
+
+**Konsequenz für deploy.sh**: Reihenfolge ist nicht verhandelbar:
+
+```bash
+1. git pull / reset
+2. pnpm payload migrate           # DB-Schema ziehen
+3. pnpm generate:importmap         # ← KRITISCH: hier, NICHT nach Build
+4. pnpm build                       # bundled importMap.js mit
+5. pm2 restart
+```
+
+**Praxis**: Im Template-`scripts/deploy.sh` ist das fest verdrahtet. Bei manuellem Deploy oder anderen Hosting-Setups (Docker, Vercel, etc.) im jeweiligen Build-Step gleichermaßen sicherstellen. Die häufigste Falle: jemand fügt `generate:importmap` als post-build-Hook ein. Falsch — ist dann zu spät, das nächste Build-Bundle ist's der die Wirkung sieht, nicht das aktuelle.
+
+**Browser-Cache-Falle**: selbst bei korrektem Build sieht ein bereits-eingeloggter Admin-User in seinem Browser ggf. das alte Lexical-/Admin-Bundle weil JS-Module aggressiv gecached werden. Hard-Refresh oder Incognito-Tab zum Verifizieren des Live-Stands.
+
+---
+
 ### 11.12 Lighthouse-Noise (gegen LCP-Hetzerei impfen)
 
 Lighthouse-LCP variiert ±300–500ms zwischen Runs auf demselben Build

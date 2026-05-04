@@ -145,6 +145,13 @@ pnpm generate:importmap
 ```
 Nach JEDER Schema-Änderung mit Custom-Component. Routine vor jedem Build.
 
+### Neue Lexical-Feature greift nicht im Admin (Link-Toolbar fehlt etc.)
+**Symptom:** Schema wurde erweitert (z.B. `LinkFeature({ enabledCollections: ['pages'] })` für interne Links im RichText), Code committed + deployed, Build grün — im Admin-UI taucht das Feature aber nicht auf. Editor sieht keinen Link-Button, oder das Internal/External-Toggle erscheint nicht.
+**Ursache:** Die `importMap.js` enthält nicht nur Custom-Components sondern auch die Feature-Registries für Lexical. Wird sie nicht regeneriert + im nächsten Build mit-gebundlet, dann hat der gebaute Admin-Code die alte Feature-Liste.
+**Fix:** `generate:importmap` IMMER VOR `pnpm build` laufen lassen, nicht danach. Reihenfolge: migrate → generate:importmap → build → restart. Im Template-`scripts/deploy.sh` ist das so eingebaut. Wer manuell deployed: nicht vergessen.
+**Browser-Cache:** Selbst nach korrektem Build sieht der Admin-User in seinem Browser ggf. noch das alte Bundle. Hard-Refresh (`Cmd+Shift+R` / `Ctrl+F5`) oder Incognito-Tab zur Verifikation.
+**Deep-Dive:** [LEARNINGS.md §11.13](LEARNINGS.md#1113-deploy-importmap-vor-build).
+
 ### `RowLabel` vs `Label` bei Blocks
 **Symptom:** TypeScript-Fehler `TS2353 Object literal may only specify known properties` bei `admin.components.RowLabel` auf einem Block-Type.
 **Ursache:** Blocks haben `Label`, nur `type: 'array'`-Fields haben `RowLabel`.
