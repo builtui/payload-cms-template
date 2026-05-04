@@ -255,6 +255,105 @@ await pm.sendEmailWithTemplate({
 
 ---
 
+## Payload Auth (forgotPassword) mit Brand-Template
+
+Payload's eingebauter `forgotPassword`-Flow ruft den konfigurierten
+Email-Adapter auf — bei euch typisch `nodemailerAdapter` über SMTP.
+Wenn ihr trotzdem die Brand-konsistenten Postmark-Templates nutzen
+wollt (wegen Layout, Logo, Tonalität), gibt es zwei Pfade:
+
+### Pfad A: Lokaler Render durch Payload's Adapter (empfohlen)
+
+Payload's `auth.forgotPassword.generateEmailHTML` returniert den
+HTML-String, den der Adapter dann sendet. Statt eine eigene
+Boilerplate-HTML zu schreiben, lokal die Postmark-Template-Files
+mit Mustache rendern und das Ergebnis zurückgeben:
+
+```ts
+// src/collections/Users.ts
+import type { CollectionConfig } from 'payload'
+import { renderPostmarkTemplate } from '@/lib/postmarkTemplate'
+
+export const Users: CollectionConfig = {
+  slug: 'users',
+  auth: {
+    forgotPassword: {
+      generateEmailHTML: async (args) => {
+        const token = (args as any)?.token
+        const user = (args as any)?.user
+        if (!token) return ''
+        const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || ''
+        const reset_url = `${baseUrl}/admin/reset/${token}`
+        const { html } = await renderPostmarkTemplate('password-reset', {
+          reset_url,
+          recipient_name: user?.firstName || '',
+        })
+        return html
+      },
+      generateEmailSubject: async () => {
+        const { subject } = await renderPostmarkTemplate('password-reset', {})
+        return subject
+      },
+    },
+  },
+  // …
+}
+```
+
+`renderPostmarkTemplate` (Helper im Template-Repo nicht enthalten,
+muss pro Projekt in `src/lib/` gebaut werden) lädt das Template +
+Layout aus `postmark-templates/` und rendert mit Mustache.js. Der
+gerenderte HTML-String geht an Payload, Payload sendet via Adapter,
+**eine** Mail kommt beim User an.
+
+Vorteile:
+- Eine einzige Send-Mechanik (= alles über Payload's Adapter)
+- Payload's Auth-Flow bleibt kanonisch, kein Custom-Endpoint nötig
+- Templates bleiben single-source-of-truth (postmark-templates/)
+
+### Pfad B: Auth via API statt SMTP (= Custom-Endpoint)
+
+Wenn ihr SMTP komplett vermeiden wollt (Attack-Surface, keine
+Server-side-SMTP-aktivierung erforderlich), könnt ihr Payload's
+Default-Auth-Mail abdrehen und einen eigenen Endpoint bauen:
+
+```ts
+// src/app/api/auth/forgot-password/route.ts
+import { NextResponse } from 'next/server'
+import { getPayload } from 'payload'
+import config from '@payload-config'
+import { sendPostmarkTemplate } from '@/lib/postmarkTemplate'
+
+export async function POST(req: Request) {
+  const { email } = await req.json()
+  const payload = await getPayload({ config })
+  const result = await payload.forgotPassword({
+    collection: 'users',
+    data: { email },
+    disableEmail: true,           // ← suppress Payload's eigene Mail
+  })
+  if (!result?.token) {
+    return NextResponse.json({ ok: true })   // pretend success → user-enumeration-Schutz
+  }
+  await sendPostmarkTemplate(
+    'password-reset',
+    { reset_url: `${process.env.NEXT_PUBLIC_SITE_URL}/admin/reset/${result.token}` },
+    { to: email },
+  )
+  return NextResponse.json({ ok: true })
+}
+```
+
+Plus: das Admin-Login-UI muss diesen Endpoint statt
+`/api/users/forgot-password` aufrufen — was bei Payload's
+Default-Admin nicht trivial ist (Override des Login-Forms nötig).
+
+**Wann was?** Pfad A wenn SMTP eh aktiv ist (z.B. Postmark mit
+SMTP-API enabled). Pfad B wenn SMTP bewusst aus (Attack-Surface
+oder ihr habt kein Custom-Domain-SMTP-Setup).
+
+---
+
 ## Reply-To: häufig vergessen, oft nützlich
 
 Form-Submission-Notifications gehen typisch an `hello@example.com`. Wenn

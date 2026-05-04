@@ -490,9 +490,24 @@ CDN-Cache: Re-Uploads behalten dieselbe URL → CDN serviert die alte Version bi
 
 ## Mail / Postmark
 
+### Postmark sendet erste Wochen nur an Domain-eigene Empfänger
+**Symptom:** Form-Submit oder Password-Reset gibt im API-Endpoint Success zurück, aber externe Lead-Adressen (`anna@kunde-xy.de`) bekommen nichts. Direkter API-Test gegen Postmark liefert `ErrorCode: 412, Message: "While your account is pending approval..."`. Domain-eigene Empfänger (z.B. `hello@<deine-domain>.com`) funktionieren.
+**Ursache:** Anti-Abuse-Mechanismus. Frische Postmark-Accounts dürfen für die ersten Wochen nur an Adressen senden die zur From-Domain passen, bis Postmark den Use-Case manuell approved.
+**Fix:** Postmark UI → oben rechts Avatar / Account → "Request Approval to Send" / "Apply for Approval". Form ausfüllen mit Use-Case (z.B. "Trade show service inquiries via website contact form, transactional only, no marketing"), erwartetem Volumen, Sender-Type. Approval kommt typisch innerhalb weniger Stunden bis 1 Tag. Sobald grün: alle Empfänger funktionieren.
+**Workaround bis Approval da ist:** für Smoke-Tests an Domain-eigene Adressen senden (`hello@<domain>.com`, `info@<domain>.com`). Echte externe Form-Submissions werden in dieser Phase silent von Postmark gedroppt — Payload's Adapter swallowt den Error, der API-Endpoint returniert weiter Success.
+**Deep-Dive:** [AGENCY-STACK.md — neuer Kunde aufsetzen](AGENCY-STACK.md#operations-pattern).
+
+### Postmark-Server hat SMTP standardmäßig nicht aktiviert
+**Symptom:** Token + .env sind korrekt, API-Sends funktionieren (form-submit per SDK), aber alles was über Payload's nodemailer-Adapter läuft (= Password-Reset, Email-Verify, Magic-Link) failed mit `Invalid login: 535 5.7.8 Error: authentication failed`.
+**Ursache:** Auf neueren Postmark-Servern ist SMTP standardmäßig **disabled** (Aufruf-Option, Anti-Abuse-Default). Die API-Endpoints funktionieren regardless, aber der SMTP-Endpoint rejected jeden AUTH-Versuch.
+**Fix:** Postmark UI → Server "Name" → **API** Tab → "Enable SMTP API" oder ähnlich beschrifteten Schalter aktivieren. Token bleibt derselbe (Server-API-Token = SMTP-User UND SMTP-Pass). Direkt danach testen: `nodemailer.createTransport(...).verify()` sollte `verify ok` zurückgeben statt 535.
+**Wann Workaround sinnvoll:** wenn ihr SMTP nicht aktivieren wollt (Attack-Surface-Argument), könnt ihr alle Payload-Auth-Flows per `disableEmail: true` + Custom-Endpoint auf die Postmark-API umstellen. Mehr Code, aber single send mechanism. Pattern-Skizze in [POSTMARK-TEMPLATES.md — Payload Auth via API](POSTMARK-TEMPLATES.md#payload-auth-via-api-statt-smtp).
+
 ### `WARN: No email adapter provided` im pm2-Log
-**Symptom:** Payload startet sauber, Form-Submits + Password-Reset werden im Log statt versendet ausgegeben. Warnung jedes Mal beim Start.
-**Ursache:** SMTP-Credentials in `.env` fehlen oder SMTP_HOST steht auf `localhost`. Der nodemailerAdapter im Template aktiviert sich nur wenn `SMTP_USER` UND `SMTP_HOST` gesetzt sind UND host nicht `localhost` ist.
+**Symptom:** Payload startet sauber, Form-Submits + Password-Reset werden im Log statt versendet ausgegeben. Warnung jedes Mal beim Start. ODER: keine WARN sichtbar, aber dennoch failt jeder Send mit 535 obwohl `.env` korrekt aussieht.
+**Ursache (zwei Schichten):**
+1. SMTP-Credentials in `.env` fehlen oder `SMTP_HOST=localhost` → der nodemailerAdapter aktiviert sich nicht (nimmt explizit "localhost" als Dev-Sentinel).
+2. **`.env` korrekt aber pm2-Prozess sieht die Werte nicht.** Next.js' "auto-load `.env`" propagiert nicht zuverlässig durch pnpm + cross-env + pm2. Der gestartete Node-Prozess hat leere `process.env.SMTP_*`-Werte obwohl die Datei stimmt. Klassischer Symptom: `cat /proc/<PID>/environ | tr '\0' '\n' | grep SMTP_` returniert leer.
 **Fix:** In Server-`.env` setzen, für Postmark:
 ```
 SMTP_HOST=smtp.postmarkapp.com
@@ -501,7 +516,8 @@ SMTP_USER=<Server-API-Token>
 SMTP_PASS=<Server-API-Token>     ← gleicher Token, beide Felder
 SMTP_FROM=noreply@<domain>
 ```
-Plus `pm2 restart <app> --update-env` (die `--update-env`-Flag ist kritisch — ohne forciert pm2 keinen Env-Reload).
+Plus: `set -a; source .env; set +a; pm2 restart <app> --update-env` — die `set -a` exportiert alle danach gesourceten Variablen, dann `--update-env` reicht sie an den restart-Prozess durch. Reines `pm2 restart --update-env` ohne shell-source greift NICHT zuverlässig.
+Im Template ist das fest in `scripts/deploy.sh` verdrahtet vor jedem `pm2 restart`. Bei manuellen Restarts dran denken.
 **Deep-Dive:** [AGENCY-STACK.md — Payload-Integration](AGENCY-STACK.md#payload-integration).
 
 ### Postmark-SMTP `535 Authentication failed`

@@ -63,8 +63,15 @@ else
   exit 1
 fi
 
-echo "→ Restarting pm2 ($APP_NAME)"
-pm2 restart "$APP_NAME"
+# Source .env into the shell before pm2 restart so the new env vars
+# reach the restarted process via --update-env. Next.js's "auto-load
+# .env" doesn't reliably propagate through pnpm + cross-env + pm2;
+# explicit export here is the only path that survives. Symptom when
+# missing: SMTP credentials in .env are correct but the running process
+# sees them as empty, nodemailer auth fails with 535.
+echo "→ Restarting pm2 ($APP_NAME) with .env loaded into shell"
+set -a; source "$REPO_DIR/.env"; set +a
+pm2 restart "$APP_NAME" --update-env
 
 # Tiny pause so pm2 finishes booting before the smoke check runs
 sleep 4
