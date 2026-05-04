@@ -19,6 +19,8 @@ Modular Payload CMS + Next.js template mit Wrapper/Container-Architektur. Basis 
 | "Welche Features gibt es im Template und welche sind opt-in?" | [docs/FEATURES.md](docs/FEATURES.md) |
 | "Welche Projekte nutzen das Template schon?" | [docs/PROJECTS.md](docs/PROJECTS.md) |
 | "Ist mein Server production-ready?" | [docs/SECURITY-AUDIT.md](docs/SECURITY-AUDIT.md) |
+| "Wie baue ich das ganze Bundle (Hosting + CDN + Mail + Storage) für Kunden?" | [docs/AGENCY-STACK.md](docs/AGENCY-STACK.md) — Provider-Matrix + Setup |
+| "Will einen Powermail-Klon (Editor-Form-Builder) bauen — wo anfangen?" | [docs/FORM-BUILDER-SPEC.md](docs/FORM-BUILDER-SPEC.md) — Spec + Phasen-Plan |
 
 **Schneller Code-Einstieg:**
 - `src/blocks/` — Block-Schemas (Payload-Fields)

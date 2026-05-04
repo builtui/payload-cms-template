@@ -191,6 +191,16 @@ DOMAIN=example.com BASIC_AUTH="user:pass" ./scripts/security-audit.sh
 Output: PASS/WARN/FAIL pro Check + Log in `/tmp/audit-<date>.txt`.
 **Details:** [SECURITY-AUDIT.md](SECURITY-AUDIT.md)
 
+### Email Adapter (Maileroo / Postmark via Nodemailer)
+**Wann aktivieren:** Sobald Mails rausgehen sollen — Form-Submissions, Password-Reset, Admin-Notifications. Ohne Adapter loggt Payload Mails nur in die Console (`WARN: No email adapter provided`).
+**Was es bringt:** `payload.sendEmail()` funktioniert. Smart-defaults via `defaultFromAddress` / `defaultFromName`.
+
+**Provider-Wahl + Setup-Snippets**: Komplette Empfehlung in [AGENCY-STACK.md — Transactional Mail](AGENCY-STACK.md#transactional-mail). Kurz:
+- **Maileroo** — günstig + EU-Server + unlimited Domains pro Account, jüngerer Provider
+- **Postmark** — premium Track-Record, Server pro Kunde, $15/mo/Server
+
+Pro Kunde liegt der API-Key in der `.env`, kein Provider-Detail im Code.
+
 ### Google Analytics 4 (`src/components/Analytics.tsx`)
 **Wann aktivieren:** Wenn das Projekt Web-Analytics will UND DSGVO-konform bleiben muss.
 **Warum:** Loaded GA4 erst nach expliziter `analytics`-Consent. Bis dahin wird kein Google-Request abgeschickt, kein Cookie gesetzt. Gegen das CookieBanner via `cookie-consent-update`-CustomEvent gekoppelt — kein Banner-Code muss angefasst werden.
@@ -389,6 +399,15 @@ Muss manuell erweitert werden, wenn neue Collections hinzukommen.
 | Deployment | Docker + Caddy | (lokal) | PM2 + systemd + nginx |
 
 Siehe [PROJECTS.md](PROJECTS.md) für Projekt-Details und Stack-Abweichungen.
+
+---
+
+## Geplante Features (Specs ohne Implementation)
+
+### Form-Builder — Powermail-Äquivalent für Payload
+**Status:** Spec ist geschrieben, nicht gebaut.
+**Zweck:** Editor-konfigurierbare Forms mit beliebigen Feldtypen, Validation, Conditional Logic, Multi-Step und Mail-Routing — analog zum TYPO3-Powermail-Plugin. Löst die manuell-pro-Use-Case-gebauten Form-Blocks (`m18-contact-form` etc.) ab, sobald 3+ distinkte Form-Varianten in einem Projekt anfallen.
+**Spec:** [FORM-BUILDER-SPEC.md](FORM-BUILDER-SPEC.md) — komplette Schema-Definition, Submit-Endpoint-Pseudo-Code, Renderer-Skizze und 3-Phasen-Bau-Plan.
 
 ---
 
