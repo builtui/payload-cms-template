@@ -11,6 +11,188 @@ einzelnen Template reicht das UI direkt.
 
 ---
 
+## Rollout in einem neuen Projekt — Step-by-Step
+
+Wenn ihr Mail in einem neuen Built-UI-Projekt aufsetzt, folgt diese
+Reihenfolge. Alles was der Pfad referenziert ist im Template entweder
+direkt enthalten oder hier als Code-Snippet dokumentiert.
+
+### 1. Postmark-Account + Server vorbereiten
+
+- Postmark-Account anlegen (oder existierenden Agency-Account benutzen)
+- Pro Kunde **eigenen Server** anlegen, **Region: EU (Frankfurt)** für DSGVO
+- Server-Type: Live (NICHT Sandbox), DeliveryType wird auf "Live" gesetzt
+- Domain im Server-UI verifizieren ("Sender Signatures" → "Add Domain"),
+  DKIM + Return-Path-DNS-Records dem Kunden zur DNS-Eintragung geben
+- SPF + DMARC parallel via DNS einpflegen — Details in
+  [AGENCY-STACK.md — DNS-Records](AGENCY-STACK.md#dns-records-pro-kunden-domain)
+- **Approval beantragen** (Postmark → Account → "Request Approval to Send"):
+  Bis Approval da ist, gehen Mails NUR an Empfänger mit derselben Domain
+  wie das From-Address-Domain. Externe Lead-Adressen werden silent
+  rejected. Siehe KNOWN-ISSUES.
+
+### 2. Pakete installieren
+
+```bash
+pnpm add postmark mustache
+pnpm add -D @types/mustache
+```
+
+`postmark` ist das offizielle SDK für API-Sends, `mustache` rendert die
+Template-Files lokal wenn ihr Pfad A für Payload-Auth nutzt (siehe unten).
+
+### 3. Template-Verzeichnis anlegen
+
+```
+postmark-templates/
+├── README.md                              ← projekt-spezifisch
+├── layouts/
+│   └── <brand>-layout/
+│       ├── layout.json                    {"Name":"...","Alias":"...","TemplateType":"Layout"}
+│       ├── content.html                   mit {{{@content}}}-Slot
+│       └── content.txt
+└── templates/
+    ├── form-inquiry-notification/
+    │   ├── template.json                  {"Alias":"...","Subject":"...","LayoutTemplate":"<brand>-layout"}
+    │   ├── content.html
+    │   └── content.txt
+    └── password-reset/
+        ├── template.json
+        ├── content.html
+        └── content.txt
+```
+
+Empfehlung: Mindestens diese drei Templates pro Projekt:
+- `form-inquiry-notification` (Form-Submission an Team-Inbox, intern)
+- `form-inquiry-confirmation` (Auto-Reply an Inquirer, bilingual)
+- `password-reset` (Payload-Auth-Flow)
+
+Pattern für Layout + Templates siehe weiter unten in diesem Doc
+(Mustachio-Patterns, bulletproof Button, Logo-Embedding).
+
+### 4. Templates pushen
+
+```bash
+POSTMARK_SERVER_TOKEN=$(op read 'op://VAULT/<server-token-item>/credential') \
+  pnpm exec node scripts/sync-postmark-templates.mjs
+```
+
+Layouts kommen vor Templates, idempotent. Bei Schema-Drift (Postmark-UI
+manuell editiert): re-run und das Repo gewinnt.
+
+### 5. `.env` befüllen + deploy
+
+Auf dem Production-Server (`/opt/<app>/.env`):
+
+```
+SMTP_HOST=smtp.postmarkapp.com
+SMTP_PORT=587
+SMTP_USER=<Server-API-Token>          ← gleicher Wert beide Felder
+SMTP_PASS=<Server-API-Token>
+SMTP_FROM=noreply@<kunden-domain>
+POSTMARK_SERVER_TOKEN=<Server-API-Token>   ← für SDK-Pfad (form-submit)
+```
+
+`scripts/deploy.sh` im Template sourced `.env` automatisch vor `pm2 restart`.
+Bei manuellem Restart nicht vergessen: `set -a; source .env; set +a; pm2 restart <app> --update-env`.
+
+### 6. Code-Wiring
+
+Helper liegt im Template in `src/lib/postmarkTemplate.ts` und exportiert
+zwei Funktionen:
+
+- **`sendPostmarkTemplate(alias, model, opts)`** — Postmark-API direkt.
+  Postmark rendert Template + Layout server-side und liefert. Use-Cases:
+  app-getriggerte Sends (Form-Submissions, Order-Confirmations).
+- **`renderPostmarkTemplate(alias, model)`** — lokaler Render via Mustache,
+  returniert `{ subject, html, text }`. Use-Cases: Payload-internal Flows
+  wo ihr nicht zur Postmark-API rufen könnt (= forgotPassword über
+  Payload's eingebauten Hook-Mechanismus).
+
+**Form-Submit** (typische Custom-Route, hier eine Skizze):
+
+```ts
+// src/app/api/form-submit/route.ts
+import { sendPostmarkTemplate } from '@/lib/postmarkTemplate'
+
+export async function POST(req: Request) {
+  const body = await req.json()
+  // ... validate, persist ...
+
+  // 1. Internal notification (= Team-Inbox)
+  await sendPostmarkTemplate(
+    'form-inquiry-notification',
+    { inquirer_name: body.name, inquirer_email: body.email, /* ... */ },
+    {
+      to: 'hello@kunde.de',
+      replyTo: body.email,            // ← Reply landet beim Lead
+      messageStream: 'forms',         // oder eigener Stream-Alias
+    },
+  )
+
+  // 2. Auto-reply an User (optional)
+  await sendPostmarkTemplate(
+    'form-inquiry-confirmation',
+    { inquirer_name: body.name, ...(body.locale === 'de' ? { de: true } : {}) },
+    { to: body.email, messageStream: 'forms' },
+  )
+
+  return Response.json({ ok: true })
+}
+```
+
+**Password-Reset** (Users-Collection forgotPassword-Hook):
+
+```ts
+// src/collections/Users.ts
+import { renderPostmarkTemplate } from '@/lib/postmarkTemplate'
+
+export const Users: CollectionConfig = {
+  slug: 'users',
+  auth: {
+    forgotPassword: {
+      generateEmailHTML: async (args) => {
+        const token = (args as any)?.token
+        if (!token) return ''
+        const reset_url = `${process.env.NEXT_PUBLIC_SITE_URL}/admin/reset/${token}`
+        const { html } = await renderPostmarkTemplate('password-reset', { reset_url })
+        return html
+      },
+      generateEmailSubject: async () => {
+        const { subject } = await renderPostmarkTemplate('password-reset', {})
+        return subject
+      },
+    },
+  },
+  // ...
+}
+```
+
+### 7. Smoke-Test
+
+Während Postmark-Approval pending ist (Schritt 1), bewusst an
+Domain-eigene Adressen testen:
+
+```bash
+# Form-submit
+curl -X POST https://<host>/api/form-submit \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Test","email":"hello@kunde.de","scope":"smoke","locale":"de"}'
+
+# Password-reset (User muss in users-collection existieren)
+curl -X POST https://<host>/api/users/forgot-password \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@kunde.de"}'
+```
+
+Beide sollten in der Postmark-Activity als `Status: Sent` auftauchen
+(Form-Submit über `forms`-Stream, Reset über `outbound`).
+
+Nach Postmark-Approval: nochmal mit externer Empfänger-Adresse testen
+(`m.kleiber@undraft.de` o.ä.) — sollte dann durchgehen.
+
+---
+
 ## Architektur
 
 ```

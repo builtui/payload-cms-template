@@ -497,11 +497,11 @@ CDN-Cache: Re-Uploads behalten dieselbe URL → CDN serviert die alte Version bi
 **Workaround bis Approval da ist:** für Smoke-Tests an Domain-eigene Adressen senden (`hello@<domain>.com`, `info@<domain>.com`). Echte externe Form-Submissions werden in dieser Phase silent von Postmark gedroppt — Payload's Adapter swallowt den Error, der API-Endpoint returniert weiter Success.
 **Deep-Dive:** [AGENCY-STACK.md — neuer Kunde aufsetzen](AGENCY-STACK.md#operations-pattern).
 
-### Postmark-Server hat SMTP standardmäßig nicht aktiviert
+### Postmark-Server-SMTP wurde manuell deaktiviert
 **Symptom:** Token + .env sind korrekt, API-Sends funktionieren (form-submit per SDK), aber alles was über Payload's nodemailer-Adapter läuft (= Password-Reset, Email-Verify, Magic-Link) failed mit `Invalid login: 535 5.7.8 Error: authentication failed`.
-**Ursache:** Auf neueren Postmark-Servern ist SMTP standardmäßig **disabled** (Aufruf-Option, Anti-Abuse-Default). Die API-Endpoints funktionieren regardless, aber der SMTP-Endpoint rejected jeden AUTH-Versuch.
-**Fix:** Postmark UI → Server "Name" → **API** Tab → "Enable SMTP API" oder ähnlich beschrifteten Schalter aktivieren. Token bleibt derselbe (Server-API-Token = SMTP-User UND SMTP-Pass). Direkt danach testen: `nodemailer.createTransport(...).verify()` sollte `verify ok` zurückgeben statt 535.
-**Wann Workaround sinnvoll:** wenn ihr SMTP nicht aktivieren wollt (Attack-Surface-Argument), könnt ihr alle Payload-Auth-Flows per `disableEmail: true` + Custom-Endpoint auf die Postmark-API umstellen. Mehr Code, aber single send mechanism. Pattern-Skizze in [POSTMARK-TEMPLATES.md — Payload Auth via API](POSTMARK-TEMPLATES.md#payload-auth-via-api-statt-smtp).
+**Ursache:** SMTP ist auf dem Server **disabled**. Standardmäßig ist SMTP auf neuen Postmark-Servern **aktiviert**, aber jemand hat es bewusst ausgeschaltet (Attack-Surface-Argument, oder versehentlich beim Setup). Die API-Endpoints funktionieren regardless, aber der SMTP-Endpoint rejected jeden AUTH-Versuch.
+**Fix:** Postmark UI → Server "Name" → **API** Tab → "Enable SMTP API" oder ähnlich beschrifteten Schalter wieder aktivieren. Token bleibt derselbe (Server-API-Token = SMTP-User UND SMTP-Pass). Direkt danach testen: `nodemailer.createTransport(...).verify()` sollte `verify ok` zurückgeben statt 535.
+**Wann SMTP bewusst aus lassen:** wenn ihr Attack-Surface minimieren wollt + nichts SMTP-only braucht. Dann alle Payload-Auth-Flows per `disableEmail: true` + Custom-Endpoint auf die Postmark-API umstellen (mehr Code, aber single send mechanism). Pattern-Skizze in [POSTMARK-TEMPLATES.md — Payload Auth via API](POSTMARK-TEMPLATES.md#payload-auth-forgotpassword-mit-brand-template).
 
 ### `WARN: No email adapter provided` im pm2-Log
 **Symptom:** Payload startet sauber, Form-Submits + Password-Reset werden im Log statt versendet ausgegeben. Warnung jedes Mal beim Start. ODER: keine WARN sichtbar, aber dennoch failt jeder Send mit 535 obwohl `.env` korrekt aussieht.

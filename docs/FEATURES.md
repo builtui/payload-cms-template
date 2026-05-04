@@ -203,6 +203,8 @@ Pro Kunde liegt der API-Key in der `.env`, kein Provider-Detail im Code.
 
 **Templates als Code im Repo**: separat dokumentiert in [POSTMARK-TEMPLATES.md](POSTMARK-TEMPLATES.md). Empfohlenes Pattern für Multi-Template-Setups: `postmark-templates/` Verzeichnis mit Layouts + Templates als Files, Push via `scripts/sync-postmark-templates.mjs`. Inkludiert: Mustachio bilingual via inverted-section, bulletproof Button HTML, base64-Logo-Embedding, Message-Stream-Routing.
 
+**Helper im Template** (`src/lib/postmarkTemplate.ts`): zwei Funktionen für die App-side Integration. `sendPostmarkTemplate(alias, model, opts)` für app-getriggerte Sends via Postmark-SDK (Form-Submissions). `renderPostmarkTemplate(alias, model)` für lokaler-Render-via-Mustache, dann durch Payload's Email-Adapter senden lassen (= Use-Case Payload `forgotPassword`-Flow mit Brand-Template). Aktivierung: `pnpm add postmark mustache && pnpm add -D @types/mustache`. Komplette Step-by-Step in [POSTMARK-TEMPLATES.md — Rollout in einem neuen Projekt](POSTMARK-TEMPLATES.md#rollout-in-einem-neuen-projekt--step-by-step).
+
 ### Google Analytics 4 (`src/components/Analytics.tsx`)
 **Wann aktivieren:** Wenn das Projekt Web-Analytics will UND DSGVO-konform bleiben muss.
 **Warum:** Loaded GA4 erst nach expliziter `analytics`-Consent. Bis dahin wird kein Google-Request abgeschickt, kein Cookie gesetzt. Gegen das CookieBanner via `cookie-consent-update`-CustomEvent gekoppelt — kein Banner-Code muss angefasst werden.
