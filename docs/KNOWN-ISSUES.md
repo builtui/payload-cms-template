@@ -83,6 +83,23 @@ pnpm build
 **Fix:** Niemals `&&` zwischen Build und Restart. Wrapper-Script mit `set -euo pipefail` + echtem `if/then/else` um den Build legen — `scripts/deploy.sh` im Template ist die Referenz.
 **Deep-Dive:** [DEPLOYMENT.md — Anti-Pattern A](DEPLOYMENT.md#anti-pattern-a-pnpm-build-21--tail-n--pm2-restart).
 
+### `pnpm install` bricht ab mit `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`
+**Symptom:** Im Deploy-Script (oder beim manuellen `ssh host "pnpm install"`) bricht pnpm ab mit:
+```
+ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY  Aborted removal of modules directory due to no TTY
+If you are running pnpm in CI, set the CI environment variable to "true", or set "confirmModulesPurge" to "false".
+```
+**Ursache:** pnpm möchte interaktiv bestätigen lassen, dass `node_modules` neu gebaut wird (z.B. nach Lockfile-Drift oder Hoisting-Mismatch). Eine non-interactive SSH-Session ohne TTY kann keinen Prompt anzeigen → Abbruch.
+**Fix:** Vor pnpm-Aufrufen `CI=true` setzen, dann werden Confirmations automatisch akzeptiert:
+```bash
+ssh "$HOST" bash -s <<EOF
+  export CI=true
+  pnpm install --frozen-lockfile
+  ...
+EOF
+```
+Alternative: server-seitig einmal `pnpm config set confirmModulesPurge false`. Im Deploy-Script ist `CI=true` aber robuster (kein Server-State-Drift zwischen Maschinen).
+
 ### `bash: [: -eq: unary operator expected` während ssh-Deploy
 **Symptom:** Inline-Deploy via `ssh host 'sudo -u user -i bash -c "..."'`, im Log taucht `unary operator expected` auf, Variablen scheinen leer.
 **Ursache:** Outer-Remote-Shell expandiert `$?` (und alle `\$VAR`-Konstrukte) im `bash -c`-Doppelquote-Argument BEVOR der Inner-Bash sie sieht. Quote-Escape-Hell, fundamentell unzuverlässig.
@@ -559,6 +576,35 @@ export SSH_AUTH_SOCK="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/
 ```
 Plus in `~/.ssh/config` `IdentityFile` auf den **Public Key** setzen (nicht Private).
 **Deep-Dive:** [LEARNINGS.md §6 — 1Password SSH-Agent](LEARNINGS.md).
+
+### 1Password-SSH-Auth funktioniert nur mit Host-Alias, nicht mit direkter IP
+**Symptom:** `ssh root@1.2.3.4` → `Permission denied (publickey,password)`. `ssh projektname` (mit Config-Alias) → funktioniert sofort. Deploy-Scripts mit hardcoded IP brechen daher beim ersten `rsync`/`ssh` ab.
+**Ursache:** Die SSH-Config-Blöcke `Host projektname` setzen den `IdentityFile`-Pointer auf den Public-Key, den der 1P-Agent in einen Private-Key auflöst. Bei direkter IP matcht kein `Host`-Block → kein `IdentityFile` → 1P wird nicht abgefragt → Auth schlägt fehl.
+**Fix:** Deploy-Scripts müssen den Host-Alias nutzen, nicht die IP. `DEPLOY_HOST` als Env-Var konfigurierbar machen mit dem Alias als Default:
+```bash
+HOST="${DEPLOY_HOST:-projektname}"
+```
+**Anti-Pattern:** `HOST="root@1.2.3.4"` als Default — funktioniert nur ohne 1P-Agent (also nur lokal mit Plain-Key auf Disk, nicht im Standard-Setup).
+
+### Zombie-Node-Prozess hält Port 3000 nach abgebrochenem Build/Deploy
+**Symptom:** PM2 startet, crasht sofort, geht in Restart-Loop. `pm2 logs` zeigt:
+```
+Error: listen EADDRINUSE: address already in use :::3000
+```
+Status zyklisch `online → errored → online`, Restart-Counter steigt schnell.
+**Ursache:** Ein vorheriger Build-Abbruch (z.B. SIGKILL durch OOM oder unterbrochener Deploy) hat einen detached Next.js-Worker hinterlassen, der den Port blockiert. PM2 weiß nichts von dem Zombie und kann ihn nicht selbst killen.
+**Fix:**
+```bash
+# 1. Finde den Zombie:
+ss -tlnp | grep ':3000'   # PID in Spalte "users:"
+# 2. Kill direkt:
+kill -9 <pid>
+# 3. PM2 sauber neu starten (NICHT pm2 reset — das kippt den Prozess in errored):
+pm2 stop <app>
+pm2 start ecosystem.config.cjs
+pm2 save
+```
+**Verwandt:** `pm2 reset <app>` setzt zwar den Restart-Counter zurück, kann aber bei aktiven Prozessen den Status auf `errored` kippen — bei laufenden Apps lieber gar nicht aufrufen oder erst stoppen.
 
 ### fail2ban zeigt nur 1 Jail nach frischer Installation
 **Fix:**
