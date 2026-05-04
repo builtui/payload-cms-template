@@ -1259,6 +1259,46 @@ deprecated `folder` select-Feld muss komplett entfernt werden — der Name
 kollidiert mit Payloads auto-injected `folder`-Relationship. Rename-
 Workaround funktioniert nicht.
 
+### 11.14 Lexical-`features` ist replace, nicht merge
+
+**Symptom**: Custom-RichText-Field, alle gewünschten Features registriert (`BoldFeature`, `LinkFeature`, etc.) — Editor lädt, aber keine Toolbar erscheint. Selektion zeigt nichts, kein Button oberhalb, kein Slash-Menü.
+
+**Ursache**: `lexicalEditor({ features: () => [...] })` ersetzt die kompletten Defaults. Die Default-Feature-Liste enthält `InlineToolbarFeature` (Floating bei Selektion) und `FixedToolbarFeature` (always-visible Button-Bar). Sobald du eine eigene Features-Liste angibst, fallen die mit raus. Die anderen Features sind registriert, aber es rendert keine UI für sie.
+
+**Zwei sinnvolle Patterns**:
+
+A. **Defaults extenden** wenn du nur EINE Feature dazunimmst:
+```ts
+lexicalEditor({
+  features: ({ defaultFeatures }) => [
+    ...defaultFeatures,
+    LinkFeature({ enabledCollections: ['pages'] }),
+  ],
+})
+```
+
+B. **Komplett explizit** wenn du ein eingeschränktes Set willst (typisch für Block-Body-RichText-Helper, kein Heading/Code/Quote die Block-Layouts brechen würden):
+```ts
+lexicalEditor({
+  features: () => [
+    InlineToolbarFeature(),     // Floating
+    FixedToolbarFeature(),       // Top bar
+    ParagraphFeature(),
+    BoldFeature(),
+    ItalicFeature(),
+    LinkFeature({ enabledCollections: ['pages'] }),
+    OrderedListFeature(),
+    UnorderedListFeature(),
+  ],
+})
+```
+
+**Falle**: Symptom ist silent — Build ist grün, Editor lädt, nichts deutet auf Konfig-Fehler hin. Editor sieht nur "ich kann hier nichts" und gibt auf. Beim Boothside-Projekt war das Pattern "wir haben einen Datenschutz-Link gebraucht" der Auslöser, der das Issue hochspülte. Davor war jeder Body-Text-Editor effektiv read-only ohne dass es jemand bemerkt hat.
+
+**Lesson**: Wenn du einen Helper-Field-Constructor wie `bodyTextField` schreibst, **immer beide Toolbars explizit registrieren**. Code-Comment dazu ans Helper-File, damit der nächste Entwickler nicht "vereinfachen" und beide Zeilen rauswerfen will.
+
+---
+
 ### 11.13 Deploy: importMap VOR Build, nicht danach
 
 **Symptom**: Schema-Erweiterung greift nicht im Admin-UI nach Deploy. Build ist grün, pm2 hat neu gestartet, neue Page lädt sauber, aber im Admin sieht der Editor das neue Feature nicht. Beispiele aus Boothside: `LinkFeature({ enabledCollections: ['pages'] })` für interne Links im RichText, neuer `BlockRowLabel`-Component, Custom-Sidebar-Field.

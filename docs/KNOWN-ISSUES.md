@@ -145,6 +145,39 @@ pnpm generate:importmap
 ```
 Nach JEDER Schema-Änderung mit Custom-Component. Routine vor jedem Build.
 
+### RichText-Editor zeigt keine Toolbar (kein Link / Bold / Slash-Menü)
+**Symptom:** Ein Block hat ein RichText-Field, im Admin lädt der Editor, aber: keine schwebende Toolbar bei Text-Selektion, keine fixe Button-Reihe oben, kein Slash-Menü. Editor kann nichts formatieren oder verlinken obwohl die Features im Schema registriert sind (`BoldFeature`, `LinkFeature` etc.).
+**Ursache:** `lexicalEditor({ features: () => [...] })` ist **replace, nicht merge**. Sobald du eine eigene Features-Liste übergibst, sind ALLE Defaults weg — auch `InlineToolbarFeature` und `FixedToolbarFeature`, die die UI für die anderen Features rendern. Die Bold/Link/etc. sind registriert, aber kein Toolbar-Component zeigt einen Button dafür.
+**Fix (zwei Optionen):**
+
+A. Defaults erweitern statt ersetzen:
+```ts
+lexicalEditor({
+  features: ({ defaultFeatures }) => [
+    ...defaultFeatures,
+    LinkFeature({ enabledCollections: ['pages'] }),
+  ],
+})
+```
+
+B. Vollständig explizit, dann Toolbars manuell registrieren:
+```ts
+import { InlineToolbarFeature, FixedToolbarFeature, ParagraphFeature, BoldFeature, LinkFeature } from '@payloadcms/richtext-lexical'
+
+lexicalEditor({
+  features: () => [
+    InlineToolbarFeature(),     // Floating-Toolbar bei Text-Selektion
+    FixedToolbarFeature(),       // Always-visible Button-Reihe oben
+    ParagraphFeature(),
+    BoldFeature(),
+    LinkFeature({ enabledCollections: ['pages'] }),
+  ],
+})
+```
+
+Option B ist sinnvoll wenn du gezielt ein eingeschränktes Feature-Set willst (kein Heading, kein Code, etc.), z.B. in einem `bodyTextField`-Helper für Block-Body-Copy.
+**Deep-Dive:** [LEARNINGS.md §11.14](LEARNINGS.md#1114-lexicalfeatures-replace-statt-merge).
+
 ### Neue Lexical-Feature greift nicht im Admin (Link-Toolbar fehlt etc.)
 **Symptom:** Schema wurde erweitert (z.B. `LinkFeature({ enabledCollections: ['pages'] })` für interne Links im RichText), Code committed + deployed, Build grün — im Admin-UI taucht das Feature aber nicht auf. Editor sieht keinen Link-Button, oder das Internal/External-Toggle erscheint nicht.
 **Ursache:** Die `importMap.js` enthält nicht nur Custom-Components sondern auch die Feature-Registries für Lexical. Wird sie nicht regeneriert + im nächsten Build mit-gebundlet, dann hat der gebaute Admin-Code die alte Feature-Liste.
