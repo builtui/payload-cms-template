@@ -15,6 +15,7 @@ Deep-Dive-Verweise gehen in `LEARNINGS.md` (Detail-Erklärungen) oder `DEPLOYMEN
 - [i18n / Lokalisierung](#i18n--lokalisierung)
 - [Bilder & Performance](#bilder--performance)
 - [CSS / Layout](#css--layout)
+- [Mail / Postmark](#mail--postmark)
 - [nginx / Reverse Proxy](#nginx--reverse-proxy)
 - [PM2 / systemd / Server](#pm2--systemd--server)
 - [Admin-UI](#admin-ui)
@@ -484,6 +485,85 @@ CDN-Cache: Re-Uploads behalten dieselbe URL → CDN serviert die alte Version bi
 **Symptom:** Beim Öffnen des mobile Menüs scheinen Teile der Page (z.B. ein autoplay-Video im Hintergrund) durch.
 **Ursache:** Das Overlay startet erst unterhalb des Headers (z.B. `top: 56px`); der Header ist semi-transparent und liegt darüber.
 **Fix:** Overlay covered den **vollen Viewport** (`top: 0; height: 100dvh`). Damit der Close-Button erreichbar bleibt: einen In-Overlay-Close-Button rendern (siehe `MobileMenu.tsx`).
+
+---
+
+## Mail / Postmark
+
+### `WARN: No email adapter provided` im pm2-Log
+**Symptom:** Payload startet sauber, Form-Submits + Password-Reset werden im Log statt versendet ausgegeben. Warnung jedes Mal beim Start.
+**Ursache:** SMTP-Credentials in `.env` fehlen oder SMTP_HOST steht auf `localhost`. Der nodemailerAdapter im Template aktiviert sich nur wenn `SMTP_USER` UND `SMTP_HOST` gesetzt sind UND host nicht `localhost` ist.
+**Fix:** In Server-`.env` setzen, für Postmark:
+```
+SMTP_HOST=smtp.postmarkapp.com
+SMTP_PORT=587
+SMTP_USER=<Server-API-Token>
+SMTP_PASS=<Server-API-Token>     ← gleicher Token, beide Felder
+SMTP_FROM=noreply@<domain>
+```
+Plus `pm2 restart <app> --update-env` (die `--update-env`-Flag ist kritisch — ohne forciert pm2 keinen Env-Reload).
+**Deep-Dive:** [AGENCY-STACK.md — Payload-Integration](AGENCY-STACK.md#payload-integration).
+
+### Postmark-SMTP `535 Authentication failed`
+**Symptom:** Nach Setup obiger Config: pm2-Logs zeigen `Invalid login: 535 SMTP authentication failed` bei jedem sendEmail.
+**Ursache (häufigste):** `SMTP_USER` oder `SMTP_PASS` haben Whitespace oder enthalten den Account-API-Token statt den Server-API-Token. Die zwei Tokens sehen ähnlich aus aber haben verschiedene Scopes.
+**Fix:** Token aus dem Postmark-UI **Server**-Bereich neu kopieren (`Servers → <name> → API Tokens → Server API Token`). NICHT der Account-API-Token oben rechts unter dem Account-Menu — der hat andere Permissions und kann nicht senden.
+**Deep-Dive:** [POSTMARK-TEMPLATES.md — Sync-Script](POSTMARK-TEMPLATES.md#sync-script) erklärt die Token-Hierarchie.
+
+### Postmark-API gibt 422 statt 404 für fehlende Templates
+**Symptom:** Beim Push eines Templates per API/Script: `GET /templates/{alias}` returniert 422 statt 404, das Sync-Script interpretiert das als Error statt als "noch nicht angelegt".
+**Ursache:** Postmark-Konvention. Viele "not found"-Cases kommen als 422 mit ErrorCode-Detail zurück.
+**Fix:** Im Sync-Script BEIDE Status-Codes (404 + 422) als "doesn't exist yet, create" behandeln. Das mitgelieferte `scripts/sync-postmark-templates.mjs` macht das so.
+
+### Postmark-CLI ignoriert Layouts
+**Symptom:** `postmark-cli push` läuft durch, aber das Layout-File aus dem Repo landet nicht im Postmark-UI als Layout — nur die Templates kommen an. Templates die `LayoutTemplate: <alias>` referenzieren rejected dann mit 422.
+**Ursache:** Die offizielle Postmark-CLI unterstützt nur Standard-Templates, keine Layouts. Layouts brauchen einen direkten API-Call.
+**Fix:** Custom-Sync-Script (siehe `scripts/sync-postmark-templates.mjs`). Layouts müssen VOR Templates gepusht werden, sonst bricht die Layout-Referenz im ersten Template-Push.
+**Deep-Dive:** [POSTMARK-TEMPLATES.md — Sync-Script](POSTMARK-TEMPLATES.md#sync-script).
+
+### Postmark-UI Preview rendert beide Sprachen gleichzeitig
+**Symptom:** Bilingual Template mit `{{#de}}…{{/de}}{{#en}}…{{/en}}`. Im Postmark-UI Preview-Tab werden BEIDE Sections gerendert, das Editor-Team sieht Mischmasch und denkt das Template ist kaputt.
+**Ursache:** Ohne TemplateModel rendert Mustachio im Postmark-UI alle Sections als truthy (default empty model). Erst mit explizit gesetztem Model wird der Branch gewählt.
+**Fix:** Inverted-Section-Pattern statt zwei separate Sections. Eine Sprache als Default (rendert wenn die Variable NICHT gesetzt ist), die andere als override:
+```mustache
+{{#de}}German{{/de}}{{^de}}English (default){{/de}}
+```
+Im Preview ohne Model rendert nur die Default-Sprache. Im Live-Send setzt App-Code `{de: true}` für deutsche Locale.
+**Deep-Dive:** [POSTMARK-TEMPLATES.md — Mustachio-Patterns](POSTMARK-TEMPLATES.md#mustachio-patterns).
+
+### Email-Button rendert ohne Text in Outlook
+**Symptom:** Inline-block-styled-anchor als Button (`<a style="display:inline-block; bg-color:...">Click</a>`). Im Browser-Preview perfekt; in Outlook-Desktop / einigen Webmails: schwarze Pille ohne sichtbaren Text, oder reiner Text-Link ohne BG.
+**Ursache:** Outlook ignoriert manche inline `display`/`background-color` CSS-Werte je nach Version. Webmails überschreiben Anchor-Color.
+**Fix:** Bulletproof-Button-Pattern (Tabelle + bgcolor-Attribut + span um Text):
+```html
+<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+  <tr>
+    <td bgcolor="#1A1A1A" style="background-color:#1A1A1A;border-radius:999px;">
+      <a href="..." style="display:inline-block;padding:14px 28px;color:#F5F2ED;text-decoration:none;">
+        <span style="color:#F5F2ED;">Button text</span>
+      </a>
+    </td>
+  </tr>
+</table>
+```
+**Deep-Dive:** [POSTMARK-TEMPLATES.md — Bulletproof Button](POSTMARK-TEMPLATES.md#bulletproof-button-table-based).
+
+### SPF: zwei `v=spf1` Records koexistieren
+**Symptom:** Postmark-Verification meldet "SPF record found but invalid" oder Mail-Provider rejected mit `permerror`.
+**Ursache:** Mehrere TXT-Records auf der Apex-Domain die mit `v=spf1` anfangen. SPF-Spec sagt: maximal EIN gültiger Record pro Domain. Sobald zwei vorhanden, ist die ganze SPF-Auflösung ungültig.
+**Fix:** Alle SPF-Includes in einem einzigen Record konsolidieren:
+```
+TXT  @  v=spf1 include:spf.protection.outlook.com include:spf.mtasv.net ~all
+```
+Achtung Lookup-Limit: SPF erlaubt maximal 10 DNS-Lookups insgesamt (rekursiv). M365-Include braucht ~3, Postmark 1.
+
+### Mail kommt an, landet aber im Spam (frischer Domain-Setup)
+**Symptom:** DKIM grün im Postmark-UI, SPF korrekt, Test-Mail ankommt im Gmail-Spam-Folder.
+**Ursache-Kandidaten:** (1) Domain hat keine Sending-Reputation, neue Domain → erste Wochen erhöhte Spam-Klassifizierung, (2) DMARC-Record fehlt, (3) Empfänger-Provider hat strikte Filter.
+**Fix:**
+1. DMARC-Record setzen (siehe oben), beginnt mit `p=none` (report-only), nach 2-4 Wochen sauberen DMARC-Reports auf `p=quarantine`
+2. Erste Wochen low volume halten (Reputation-Warmup)
+3. Bei wichtigen Empfängern (B2B, Trade Show contacts) initial vorbeschicken: kurze persönliche Mail vom From-Account, damit der Empfänger sie als "expected sender" markiert
 
 ---
 

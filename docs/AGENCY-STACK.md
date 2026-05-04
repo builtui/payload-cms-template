@@ -274,6 +274,113 @@ Für beide Provider:
 
 Kunde fügt die Records in seine DNS-Zone ein, Provider verifiziert.
 
+#### SPF-Record bei Multi-Sender-Domain
+
+Wenn die Kunden-Domain bereits über M365 / Google Workspace versendet,
+soll der Postmark-`include` HINZU statt ersetzen — ein einziger
+SPF-Record pro Domain (mehrere `v=spf1`-Records sind ungültig):
+
+```
+TXT  @  v=spf1 include:spf.protection.outlook.com include:spf.mtasv.net ~all
+```
+
+`~all` (softfail) zum Start, nach 2-4 Wochen DMARC-Reports auf `-all`
+(hardfail) hochziehen wenn keine legitimen-aber-unlisted Sender mehr
+auftauchen. `-all` ist der sauberere Endzustand, aber direkt damit zu
+starten ist riskant — vergessene SaaS-Tools (Calendly, Newsletter,
+ältere Auto-Reply-Setups) werden dann silent rejected.
+
+SPF hat ein 10-DNS-Lookup-Limit. `spf.protection.outlook.com` braucht
+~3 Lookups, `spf.mtasv.net` 1 — bei zwei Includes also 4 von 10
+verbraucht. Genug Reserve für später.
+
+#### Sender Signature vs Domain Verification (Postmark)
+
+Postmark unterscheidet:
+- **Sender Signature**: eine spezifische Adresse (z.B. nur
+  `noreply@kunde.de`) ist sendberechtigt
+- **Domain Verification**: die ganze Domain via DKIM verifiziert,
+  beliebige `*@kunde.de` darf senden
+
+**Immer Domain Verification benutzen**, nicht Sender Signatures. Eine
+Verifikation deckt alle From-Adressen ab, du musst keine einzeln
+registrieren wenn du später `hello@`, `support@`, `noreply@` nutzen
+willst. Postmark-UI verwirrt mit "Sender Signatures" als Tab-Name —
+das listet beides, aber der "Add Domain or Signature"-Button öffnet
+einen Dialog wo du die Domain-Variante wählst.
+
+### Message Streams (Postmark — pro-Klasse-Routing)
+
+Innerhalb eines Postmark-Servers trennt Postmark Mails in **Streams**.
+Default ist `outbound` (transactional). Custom Streams pro Mail-Klasse
+sinnvoll wenn:
+
+- du verschiedene Bounce-Behandlung willst pro Klasse
+- ein Stream Spam-Complaints absammeln könnte ohne andere zu kontaminieren
+- du Activity im Postmark-UI getrennt nach Klasse filtern willst
+
+**Empfohlenes Default-Setup für Built-UI-Projekte**:
+
+| Stream | Wer triggert | Beispiele |
+|---|---|---|
+| `outbound` (Default) | Payload-Auth | Password-Reset, Verify-Email |
+| `notifications` (Custom) | Custom App-Code | Form-Submissions, Order-Confirmations |
+
+Custom Stream im Postmark-UI anlegen: Server → Message Streams →
+Create Stream → Type: Transactional. Identifier `notifications`.
+
+App-Side Routing via SMTP-Header (geht durch `nodemailer` durch zu
+Postmark):
+
+```ts
+await payload.sendEmail({
+  to: ...,
+  from: ...,
+  subject: ...,
+  html: ...,
+  headers: { 'X-PM-Message-Stream': 'notifications' },
+})
+```
+
+Bei Postmark-SDK direkt (für Template-Sends): das Feld heißt
+`MessageStream`. No-op bei nicht-Postmark-Providern.
+
+Mehr zum Pattern: [POSTMARK-TEMPLATES.md — Message Streams](POSTMARK-TEMPLATES.md#message-streams-pro-klasse-routing).
+
+### Reply-To für Form-Notifications
+
+Internal-Notifications (Form-Submission an Team-Postfach) sollten
+`replyTo: <inquirer-email>` setzen — sonst klickt das Team auf
+"Antworten" und landet bei `noreply@` statt beim Lead:
+
+```ts
+await payload.sendEmail({
+  to: 'hello@kunde.de',
+  from: 'noreply@kunde.de',
+  replyTo: body.email,                // ← der Inquirer
+  subject: 'Neue Anfrage',
+  html: '...',
+})
+```
+
+Konvention:
+- **Internal-Notifications** → `replyTo` = Inquirer
+- **User-Confirmations** → kein `replyTo` (oder `hello@`)
+- **System-Mails** (Reset, Verify) → kein `replyTo`
+
+### `noreply@` Mailbox vorbereiten
+
+Senden funktioniert auch wenn `noreply@kunde.de` kein echtes Postfach
+ist (DKIM verifiziert nur die Domain). ABER: wenn jemand auf eine
+`noreply@`-Mail antwortet UND die Adresse hat keinen Inbox/Forwarder,
+bouncen die Antworten beim Sender mit "Mailbox nicht gefunden". Sieht
+unprofessionell aus.
+
+**Best Practice**: in M365 / Google Workspace einen Forwarder
+`noreply@kunde.de → hello@kunde.de` (oder zentrale Inbox) einrichten.
+2 Minuten Arbeit, einmalig pro Kunde — versehentliche Antworten landen
+im Team-Postfach statt im Leeren.
+
 ---
 
 ## Operations-Pattern

@@ -201,6 +201,8 @@ Output: PASS/WARN/FAIL pro Check + Log in `/tmp/audit-<date>.txt`.
 
 Pro Kunde liegt der API-Key in der `.env`, kein Provider-Detail im Code.
 
+**Templates als Code im Repo**: separat dokumentiert in [POSTMARK-TEMPLATES.md](POSTMARK-TEMPLATES.md). Empfohlenes Pattern für Multi-Template-Setups: `postmark-templates/` Verzeichnis mit Layouts + Templates als Files, Push via `scripts/sync-postmark-templates.mjs`. Inkludiert: Mustachio bilingual via inverted-section, bulletproof Button HTML, base64-Logo-Embedding, Message-Stream-Routing.
+
 ### Google Analytics 4 (`src/components/Analytics.tsx`)
 **Wann aktivieren:** Wenn das Projekt Web-Analytics will UND DSGVO-konform bleiben muss.
 **Warum:** Loaded GA4 erst nach expliziter `analytics`-Consent. Bis dahin wird kein Google-Request abgeschickt, kein Cookie gesetzt. Gegen das CookieBanner via `cookie-consent-update`-CustomEvent gekoppelt — kein Banner-Code muss angefasst werden.
