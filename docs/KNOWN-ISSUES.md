@@ -138,6 +138,16 @@ seoPlugin({
 ```
 **Deep-Dive:** [LEARNINGS.md §2 — plugin-seo vs. custom seoFields](LEARNINGS.md).
 
+### Editor pflegt SEO-Felder, aber im Frontend kommt nichts an
+**Symptom:** Search Console listet Detail-Seiten als "Crawled — currently not indexed" oder "Duplicate without user-selected canonical". HTML-Head zeigt entweder doppelten Brand-Suffix im Title oder die englische Site-Default-Description auf allen Detail-Seiten — obwohl der Editor pro Doc Title/Description in beiden Sprachen gepflegt hat.
+**Ursache:** Die Route hat eine eigene `generateMetadata`, die `doc.meta` ignoriert (z.B. nur `return { title: doc.title + ' — Brand' }`). `buildPageMetadata` aus `lib/seo.ts` wird nicht aufgerufen.
+**Fix:** Jede Route geht durch `buildPageMetadata(doc, { pathSuffix: '...' })`. Verifikation:
+```bash
+curl -sL https://site.com/your/page \
+  | grep -E '<title>|<meta name="description"|<link rel="canonical"|hreflang'
+```
+**Deep-Dive:** [SEO.md](SEO.md), [LEARNINGS.md §9 — Detail-Routen mit eigener generateMetadata](LEARNINGS.md#9-bugs-die-sich-wiederholen-können).
+
 ### Media-Search crasht mit blank rechter Seite
 **Symptom:** Im Admin "Media"-Collection → Suche tippen → rechte Seite wird weiß.
 **Ursache:** `listSearchableFields` enthält ein select/enum-Feld (z.B. `folder`). Postgres ILIKE gegen enum crasht.

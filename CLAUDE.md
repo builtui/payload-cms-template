@@ -144,12 +144,13 @@ export const EventTypes: CollectionConfig = {
 ```
 Warum: Static `select` bräuchte Code-Changes für Option-Add/Rename. Mit Relationship managen Editoren die Categories im Admin.
 
-### SEO Files (robots.txt + sitemap.xml)
+### SEO Files (robots.txt + sitemap.xml + per-page metadata)
 - `src/app/robots.ts` und `src/app/sitemap.ts` nutzen Next.js' Metadata-Route-Konvention
 - MÜSSEN in `src/app/` direkt liegen — **NICHT** in `(frontend)/` Route-Group (Next.js ignoriert Route-Groups für Metadata-Files)
 - `robots.ts` blockt `/admin` und `/api`
 - `sitemap.ts` queried DB, generiert Entries pro Collection
 - Beide nutzen `NEXT_PUBLIC_SITE_URL` env — auf Production-Domain setzen
+- **Per-Page SEO**: jede Route muss `generateMetadata` exportieren und durch `buildPageMetadata` aus `src/lib/seo.ts` gehen — sonst kommt vom Editor gepflegtes plugin-seo `meta.*` nicht im HTML an (Boothside-Bug). Vollständig dokumentiert in [docs/SEO.md](docs/SEO.md).
 
 ---
 

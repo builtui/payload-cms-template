@@ -7,7 +7,23 @@ import { Footer } from '@/components/Footer'
 import { CookieBanner } from '@/components/CookieBanner'
 import './globals.css'
 
+/**
+ * Site-wide default metadata.
+ *
+ * Per-page metadata is built by lib/seo.ts → `buildPageMetadata` and
+ * called from each route's `generateMetadata`. That helper emits
+ * `title: { absolute }` so this template's `title.template` does NOT
+ * double-append the brand when the editor's SEO title already contains
+ * it. The template + default below only kick in for routes that don't
+ * implement `generateMetadata` (rare — every content route should).
+ *
+ * `metadataBase` is required for relative image URLs (e.g. Payload media
+ * URLs like `/api/media/file/foo.webp`) to resolve to absolute URLs in
+ * `<meta property="og:image">`. Without it, Next.js logs a warning and
+ * social previews break.
+ */
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'),
   title: {
     default: 'My Website',
     template: '%s — My Website',

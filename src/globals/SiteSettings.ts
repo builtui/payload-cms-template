@@ -5,7 +5,16 @@ export const SiteSettings: GlobalConfig = {
   label: 'Einstellungen',
   admin: { group: 'Einstellungen' },
   fields: [
-    { name: 'siteName', type: 'text', admin: { description: 'Wird im Copyright und Meta-Tags verwendet' } },
+    { name: 'siteName', type: 'text', admin: { description: 'Wird im Copyright und Meta-Tags verwendet (Brand-Name in <title> Tags)' } },
+    {
+      name: 'defaultOgImage',
+      type: 'upload',
+      relationTo: 'media',
+      admin: {
+        description:
+          'Fallback OG-Image für Seiten ohne eigenes Cover oder meta.image. Empfohlen: 1200×630 px, < 1 MB. Wird in lib/seo.ts als letzter Fallback verwendet.',
+      },
+    },
     { name: 'legalEntity', type: 'text', admin: { description: 'Rechtsträger (z.B. für Impressum)' } },
     { name: 'partner', type: 'text', localized: true },
     {

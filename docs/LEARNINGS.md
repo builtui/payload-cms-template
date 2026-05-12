@@ -1025,6 +1025,34 @@ Der Browser handlet beide case-insensitive, aber statische HTML-Grep-Checks
 (`grep fetchpriority=`) matchen nicht. Suche nach `fetchPriority` (gemischt)
 oder case-insensitive mit `-i`.
 
+### ☐ Detail-Routen mit eigener `generateMetadata` ohne `buildPageMetadata`
+**Story (Boothside 2026-05):** Editor pflegt im Admin für jede Page/Event/Post
+`meta.title` + `meta.description` in DE und EN — und im Frontend kommt davon
+**nichts** an. Search Console füllt sich mit "Crawled — currently not indexed"
+auf den ~30 Detail-Seiten.
+
+**Ursache:** `work/[slug]/page.tsx`, `trade-shows/[slug]/page.tsx`,
+`blog/[slug]/page.tsx` hatten je eine eigene `generateMetadata`, die nur
+`{ title: <doc>.title — Brand }` zurückgab und das `meta`-Objekt aus dem
+Payload-Doc **komplett ignorierte**. Description fiel auf den site-weiten
+englischen Layout-Default zurück → identisches Snippet auf 30 Seiten → Google
+liest das als duplicate / thin content und droppt die Seiten aus dem Index.
+
+**Fix-Pattern**: jede Route geht durch `buildPageMetadata(doc, opts)` aus
+`lib/seo.ts`. Das ist die einzige Naht, an der die Verkabelung passieren darf.
+Keine route-eigene generateMetadata-Logik ausserhalb des Helpers.
+
+**Check beim Bau einer neuen Detail-Route:**
+```bash
+curl -sL https://site.com/some/detail-page \
+  | grep -E '<title>|<meta name="description"|<link rel="canonical"|hreflang'
+```
+Wenn Title oder Description duplizieren oder kein Canonical erscheint → der
+Route fehlt der `buildPageMetadata`-Call.
+
+**Deep-Dive:** [SEO.md](SEO.md) — komplettes Pattern + Editor-Workflow +
+Multi-Locale-Aktivierung + Verification-Checklist.
+
 ---
 
 ## 10. Template-Kandidaten

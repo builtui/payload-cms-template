@@ -1,8 +1,27 @@
+import type { Metadata } from 'next'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { RenderBlocks } from '@/components/RenderBlocks'
+import { buildPageMetadata } from '@/lib/seo'
 
 export const revalidate = 60 // Re-generate every 60 seconds
+
+async function fetchHome() {
+  const payload = await getPayload({ config })
+  const found = await payload.find({
+    collection: 'pages',
+    where: { slug: { equals: 'home' } },
+    limit: 1,
+  })
+  return found.docs[0]
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const home = await fetchHome().catch(() => null)
+  // pathSuffix '' = site root. Add { locale: '...' } here if you've
+  // activated the i18n middleware — see middleware.example.ts.
+  return buildPageMetadata(home as any, { pathSuffix: '' })
+}
 
 export default async function HomePage() {
   const payload = await getPayload({ config })
