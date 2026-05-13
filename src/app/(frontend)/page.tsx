@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { headers } from 'next/headers'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { RenderBlocks } from '@/components/RenderBlocks'
@@ -6,34 +7,55 @@ import { buildPageMetadata } from '@/lib/seo'
 
 export const revalidate = 60 // Re-generate every 60 seconds
 
-async function fetchHome() {
+type SearchParams = Promise<{ draft?: string }>
+
+/**
+ * Resolve whether the current request should see Draft content.
+ * Two conditions must be true:
+ *  - URL carries `?draft=true` (opt-in by Payload livePreview iframe)
+ *  - Request has an authenticated Payload session cookie
+ *
+ * Anonymous visitors with `?draft=true` get nothing extra (auth fails →
+ * returns false), so the page stays safe for sharing draft URLs by
+ * accident. Public visitors hit the static path with no draft= param,
+ * so the cached published version is served.
+ */
+async function resolveDraftRequest(searchParams: SearchParams): Promise<boolean> {
+  const sp = await searchParams
+  if (sp?.draft !== 'true') return false
+  try {
+    const payload = await getPayload({ config })
+    const { user } = await payload.auth({ headers: await headers() })
+    return Boolean(user)
+  } catch {
+    return false
+  }
+}
+
+async function fetchHome(draft: boolean) {
   const payload = await getPayload({ config })
   const found = await payload.find({
     collection: 'pages',
-    where: { slug: { equals: 'home' } },
+    where: draft
+      ? { slug: { equals: 'home' } }
+      : { slug: { equals: 'home' }, _status: { equals: 'published' } },
     limit: 1,
+    draft,
   })
   return found.docs[0]
 }
 
 export async function generateMetadata(): Promise<Metadata> {
-  const home = await fetchHome().catch(() => null)
-  // pathSuffix '' = site root. Add { locale: '...' } here if you've
-  // activated the i18n middleware — see middleware.example.ts.
+  // Metadata always uses the published version — share-targets shouldn't
+  // see draft titles.
+  const home = await fetchHome(false).catch(() => null)
   return buildPageMetadata(home as any, { pathSuffix: '' })
 }
 
-export default async function HomePage() {
-  const payload = await getPayload({ config })
-
+export default async function HomePage({ searchParams }: { searchParams: SearchParams }) {
+  const draft = await resolveDraftRequest(searchParams)
   try {
-    const page = await payload.find({
-      collection: 'pages',
-      where: { slug: { equals: 'home' } },
-      limit: 1,
-    })
-
-    const data = page.docs[0]
+    const data = await fetchHome(draft)
     if (!data) {
       return (
         <div className="edge pt-24 min-h-[60vh]">

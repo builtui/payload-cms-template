@@ -27,13 +27,18 @@ export default buildConfig({
     },
     livePreview: {
       url: ({ data, collectionConfig }) => {
+        // `?draft=true` activates the draft-rendering branch in the
+        // frontend route (see app/(frontend)/[slug]/page.tsx). The
+        // frontend route additionally checks Payload auth via cookie
+        // so anonymous visitors with that URL still only see published.
         if (collectionConfig?.slug === 'pages') {
           const slug = (data as any)?.slug
-          return slug === 'home' ? '/' : `/${slug}`
+          const base = slug === 'home' ? '/' : `/${slug}`
+          return `${base}?draft=true`
         }
         // Add your collection URL mappings here:
-        // if (collectionConfig?.slug === 'events') return `/events/${(data as any)?.slug}`
-        return '/'
+        // if (collectionConfig?.slug === 'events') return `/events/${(data as any)?.slug}?draft=true`
+        return '/?draft=true'
       },
       breakpoints: [
         { label: 'Mobile', name: 'mobile', width: 375, height: 667 },

@@ -7,10 +7,30 @@ export const Pages: CollectionConfig = {
   labels: { singular: 'Seite', plural: 'Seiten' },
   admin: {
     useAsTitle: 'title',
-    defaultColumns: ['title', 'slug', 'isHomepage', 'isArchive'],
+    defaultColumns: ['title', 'slug', '_status', 'isHomepage', 'isArchive'],
     group: 'Inhalte',
   },
-  access: { read: () => true },
+  // Public read is gated by published status: anonymous visitors only
+  // get published docs; authenticated admins can read drafts via the
+  // auth-cookie-driven `req.user` check.
+  access: {
+    read: ({ req }) => {
+      if (req?.user) return true
+      return { _status: { equals: 'published' } }
+    },
+  },
+  // Native Payload drafts — adds a "Save Draft" / "Publish" pair of
+  // buttons, a version history per document (rollback supported), and
+  // a `_status` column with values 'draft' | 'published'. Frontend
+  // pages must filter on `_status=published` (see app/(frontend)/page.tsx
+  // and app/(frontend)/[slug]/page.tsx for the canonical pattern).
+  versions: {
+    drafts: {
+      autosave: false,
+      schedulePublish: false,
+    },
+    maxPerDoc: 50,
+  },
   fields: [
     { name: 'title', type: 'text', required: true, localized: true },
     slugField('title'),

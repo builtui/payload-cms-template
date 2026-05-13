@@ -67,7 +67,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const payload = await getPayload({ config })
 
-    const pages = await payload.find({ collection: 'pages', limit: 1000, depth: 0 })
+    // Sitemap only ever lists published pages — drafts must never end
+    // up in search engines or shared link previews.
+    const pages = await payload.find({
+      collection: 'pages',
+      limit: 1000,
+      depth: 0,
+      where: { _status: { equals: 'published' } },
+    })
 
     const entries: MetadataRoute.Sitemap = []
 

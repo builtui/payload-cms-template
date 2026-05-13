@@ -118,6 +118,55 @@ export async function generateStaticParams() {
 ```
 Ohne das bricht `pnpm build` wenn DB in CI unreachable. Mit dem Fallback generiert Next.js die Pages on-demand beim ersten Request. Siehe [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md).
 
+### Drafts & Publish (Pages, opt-in für weitere Collections)
+
+`Pages` hat Payload native Drafts aktiviert. Editor speichert unveröffentlichte Einträge als Draft, "Publish" macht sie öffentlich. Versionshistorie bis 50 Versionen pro Doc — Rollback möglich.
+
+**Collection-Config**:
+```typescript
+access: {
+  read: ({ req }) => {
+    if (req?.user) return true                          // Admins sehen alles
+    return { _status: { equals: 'published' } }         // Anon: nur published
+  },
+},
+versions: {
+  drafts: { autosave: false, schedulePublish: false },
+  maxPerDoc: 50,
+},
+```
+
+**Frontend-Pattern — Draft-Pfad mit Auth-Check**:
+Jede public Route muss auf `_status='published'` filtern. Detail-Routes ehren zusätzlich `?draft=true` (Live-Preview-iframe-Param), wenn die Request einen gültigen Payload-Auth-Cookie hat:
+
+```tsx
+async function resolveDraftRequest(searchParams: Promise<{ draft?: string }>) {
+  const sp = await searchParams
+  if (sp?.draft !== 'true') return false
+  try {
+    const payload = await getPayload({ config })
+    const { user } = await payload.auth({ headers: await headers() })
+    return Boolean(user)
+  } catch { return false }
+}
+
+const result = await payload.find({
+  collection: 'pages',
+  where: draft
+    ? { slug: { equals: slug } }
+    : { slug: { equals: slug }, _status: { equals: 'published' } },
+  draft,
+})
+```
+
+**`livePreview.url`** in `payload.config.ts` immer mit `?draft=true` anhängen, damit das Admin-Iframe automatisch in den Draft-Pfad geht.
+
+**Sitemap/SEO**: IMMER auf `_status='published'` filtern. Drafts dürfen niemals in Suchmaschinen oder Share-Link-Vorschauen landen.
+
+**Migration bei Aktivierung auf bestehender Collection**: Payload `migrate:create` generiert die `_versions_*`-Shadow-Tables automatisch. Aber das `ADD COLUMN "_status" DEFAULT 'draft'` setzt bestehende Rows auf 'draft' — wenn das Frontend dann auf published filtert, sind alle Seiten unsichtbar. Nach `ADD COLUMN` ein `UPDATE "<table>" SET "_status" = 'published';` einfügen, um bestehende Inhalte sichtbar zu halten (Pattern aus Boothside `20260513_134823_events_drafts`).
+
+**Neue Collections**: gleiche access + versions config übernehmen, jede public Route muss `_status='published'` filtern, Live-Preview-URL kriegt `?draft=true`.
+
 ### Slug Handling
 Helper `slugField('title')` in `src/fields/slugField.ts` generiert URL-safe Slugs via `slugify()`:
 - Deutsche Umlaute: `ö → oe`, `ä → ae`, `ü → ue`, `ß → ss`
