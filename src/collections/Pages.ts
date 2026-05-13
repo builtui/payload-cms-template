@@ -10,15 +10,15 @@ export const Pages: CollectionConfig = {
     defaultColumns: ['title', 'slug', '_status', 'isHomepage', 'isArchive'],
     group: 'Inhalte',
   },
-  // Public read is gated by published status: anonymous visitors only
-  // get published docs; authenticated admins can read drafts via the
-  // auth-cookie-driven `req.user` check.
-  access: {
-    read: ({ req }) => {
-      if (req?.user) return true
-      return { _status: { equals: 'published' } }
-    },
-  },
+  // Reads are open at the collection level — the public frontend
+  // filters `_status='published'` explicitly in each query (see
+  // app/(frontend)/page.tsx and [slug]/page.tsx). Keeping the
+  // collection access open means admin list-views, version-lookups,
+  // and the side-by-side Live-Preview iframe all work without the
+  // anonymous-vs-authenticated filter accidentally hiding things
+  // from the editor. Public visibility is enforced at the route
+  // level, NOT at the collection level.
+  access: { read: () => true },
   // Native Payload drafts — adds a "Save Draft" / "Publish" pair of
   // buttons, a version history per document (rollback supported), and
   // a `_status` column with values 'draft' | 'published'. Frontend

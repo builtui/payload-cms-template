@@ -120,24 +120,21 @@ Ohne das bricht `pnpm build` wenn DB in CI unreachable. Mit dem Fallback generie
 
 ### Drafts & Publish (Pages, opt-in für weitere Collections)
 
-`Pages` hat Payload native Drafts aktiviert. Editor speichert unveröffentlichte Einträge als Draft, "Publish" macht sie öffentlich. Versionshistorie bis 50 Versionen pro Doc — Rollback möglich.
+`Pages` hat Payload native Drafts aktiviert. Editor speichert unveröffentlichte Einträge als Draft, "Publish" macht sie öffentlich. Versionshistorie bis 50 Versionen pro Doc — Rollback möglich. **Editor-UX bleibt vollständig**: Save-Draft + Publish-Buttons, 3-Punkte-Menü, Side-by-Side Live-Preview, Versions-Tab.
+
+**Wichtigste Regel**: Public-Sichtbarkeit wird **NUR im Frontend-Route gefiltert**, nicht über `access.read` auf der Collection. Sobald `access.read` auf einer drafts-aktivierten Collection einen `_status`-Filter setzt, wirken Versions-Lookups und Admin-Seitenpanels mit gefilterter Sicht — Funktionen verschwinden lautlos aus dem Admin.
 
 **Collection-Config**:
 ```typescript
-access: {
-  read: ({ req }) => {
-    if (req?.user) return true                          // Admins sehen alles
-    return { _status: { equals: 'published' } }         // Anon: nur published
-  },
-},
+access: { read: () => true },              // Collection-level: offen
 versions: {
   drafts: { autosave: false, schedulePublish: false },
   maxPerDoc: 50,
 },
 ```
 
-**Frontend-Pattern — Draft-Pfad mit Auth-Check**:
-Jede public Route muss auf `_status='published'` filtern. Detail-Routes ehren zusätzlich `?draft=true` (Live-Preview-iframe-Param), wenn die Request einen gültigen Payload-Auth-Cookie hat:
+**Frontend-Pattern — Public-Filter PRO Route**:
+Jede public Route filtert explizit auf `_status='published'`. Detail-Routes ehren zusätzlich `?draft=true` (Live-Preview-iframe-Param), wenn die Request einen gültigen Payload-Auth-Cookie hat:
 
 ```tsx
 async function resolveDraftRequest(searchParams: Promise<{ draft?: string }>) {
@@ -161,9 +158,11 @@ const result = await payload.find({
 
 **`livePreview.url`** in `payload.config.ts` immer mit `?draft=true` anhängen, damit das Admin-Iframe automatisch in den Draft-Pfad geht.
 
-**Sitemap/SEO**: IMMER auf `_status='published'` filtern. Drafts dürfen niemals in Suchmaschinen oder Share-Link-Vorschauen landen.
+**Sitemap/SEO**: IMMER auf `_status='published'` im Frontend filtern. Drafts dürfen niemals in Suchmaschinen oder Share-Link-Vorschauen landen.
 
-**Migration bei Aktivierung auf bestehender Collection**: Payload `migrate:create` generiert die `_versions_*`-Shadow-Tables automatisch. Aber das `ADD COLUMN "_status" DEFAULT 'draft'` setzt bestehende Rows auf 'draft' — wenn das Frontend dann auf published filtert, sind alle Seiten unsichtbar. Nach `ADD COLUMN` ein `UPDATE "<table>" SET "_status" = 'published';` einfügen, um bestehende Inhalte sichtbar zu halten (Pattern aus Boothside `20260513_134823_events_drafts`).
+**Migration bei Aktivierung auf bestehender Collection**: Payload `migrate:create` generiert die `_versions_*`-Shadow-Tables automatisch. Aber das `ADD COLUMN "_status" DEFAULT 'draft'` setzt bestehende Rows auf 'draft' — wenn das Frontend dann auf published filtert, sind alle Seiten unsichtbar. Nach `ADD COLUMN` ein `UPDATE "<table>" SET "_status" = 'published';` einfügen, um bestehende Inhalte sichtbar zu halten.
+
+**Alternativ für kleine Projekte**: simple `published: checkbox` field statt `versions.drafts`. Pattern: Field am Top-Level, default `false`, sidebar position. Frontend filtert auf `published: { equals: true }`. Kein Versions-Schema, keine Admin-UX-Änderung. Verwendet bei Boothside (siehe `cms/src/collections/Events.ts`).
 
 **Neue Collections**: gleiche access + versions config übernehmen, jede public Route muss `_status='published'` filtern, Live-Preview-URL kriegt `?draft=true`.
 
