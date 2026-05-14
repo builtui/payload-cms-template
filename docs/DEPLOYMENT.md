@@ -117,6 +117,37 @@ generiert die transcoded-Variante on-upload, nicht on-demand).
 
 Daher: ffmpeg **immer mit installieren**, auch wenn die Site aktuell nur Bilder hat.
 
+### Swap-File einrichten (Pflicht auf Hetzner CX22)
+
+Die CX22 (4 GB RAM) ist beim Setup ohne Swap-File. Sobald die Site auf 30+ Pages
+und Posts gewachsen ist, kollidiert der `next build` (Heap ~2 GB) mit dem
+laufenden pm2-Process (~2 GB) und der OOM-Killer terminiert den Build-Process.
+Symptom: deploy.log endet nach `Creating an optimized production build...` mit
+exit 1, ohne Stack-Trace oder TypeScript-Fehler. Die Site läuft weiter mit dem
+alten Build, aber kein Update geht mehr durch.
+
+Diagnostik: `dmesg -T | grep -i oom` zeigt den Kill-Event.
+
+**Setup einmalig (4 GB):**
+
+```bash
+fallocate -l 4G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+# Verify:
+swapon --show
+free -h
+```
+
+**Warum 4 GB:** RAM + Swap zusammen ≥ 2× peak build memory (~3 GB). Reicht für
+Sites bis ~200 Pages. Wenn der Build später wieder OOM-killt, auf 8 GB hoch.
+
+**Alternative wäre `--max-old-space-size` in `package.json` zu senken** (von
+default-8000 auf 2048), aber das produziert "JavaScript heap out of memory"
+Errors bei großen Builds — laut, aber blockt auch. Swap ist robuster.
+
 ---
 
 ## 2. Node.js 20 + pnpm + PM2

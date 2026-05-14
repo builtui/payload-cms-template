@@ -107,6 +107,24 @@ Alternative: server-seitig einmal `pnpm config set confirmModulesPurge false`. I
 **Fix:** Real-Script ablegen (`scripts/deploy.sh`), mit einem einzigen `ssh`-Call ohne `bash -c` starten: `ssh host 'sudo -u user -i /path/to/deploy.sh'`.
 **Deep-Dive:** [DEPLOYMENT.md — Anti-Pattern B](DEPLOYMENT.md#anti-pattern-b-nested-ssh--sudo--bash--c--mit-quote-escaping).
 
+### `next build` failt silent — Log endet bei "Creating an optimized production build..."
+**Symptom:** deploy.log ist 12 Zeilen, exit 1, kein Stack-Trace, kein TypeScript-Fehler. Letzte sichtbare Zeile: `Creating an optimized production build ...` dann direkt `ELIFECYCLE Command failed with exit code 1`. pm2 läuft mit altem Build weiter (deploy.sh sauber abgebrochen). Lokal baut der gleiche Commit problemlos.
+**Ursache:** Linux OOM-Killer terminiert den Build-Node-Process. Auf Hetzner CX22 (4 GB RAM) ohne Swap kollidieren laufender pm2-Process (~2 GB) + Build-Heap (~2 GB) > 4 GB → Kernel killt.
+**Diagnose:** `ssh host 'dmesg -T | tail -30 | grep -i oom'` zeigt den Kill-Event mit PID + RSS.
+**Fix:** 4 GB Swap-File einrichten (siehe [DEPLOYMENT.md → Server vorbereiten → Swap-File](DEPLOYMENT.md#swap-file-einrichten-pflicht-auf-hetzner-cx22)). Einmaliger Setup, persistent via `/etc/fstab`. Build hat dann Puffer.
+**Anti-Pattern:** Nicht `--max-old-space-size` runtersetzen — das produziert "JavaScript heap out of memory" Errors die das Problem nur lautstark statt silent machen. Swap ist die robustere Lösung.
+
+### sitemap.xml zeigt alte Slugs nach Editor-Änderungen, refresht erst beim nächsten Deploy
+**Symptom:** Editor benennt im Admin einen Page/Post/Event-Slug um. Die Detail-URL funktioniert sofort (200), die alte URL gibt 404, aber `sitemap.xml` zeigt tagelang noch den alten Slug. Search Console submittet die invalide URL.
+**Ursache:** Ohne explizites `export const dynamic` oder `export const revalidate` klassifiziert Next.js `sitemap.xml` als `○ (Static)` — einmal beim Build vorgerendert, dann gecached bis `rm -rf .next` (nächster Deploy).
+**Fix:** In `src/app/sitemap.ts`:
+```ts
+export const dynamic = 'force-dynamic'
+```
+Sitemap wird dann als `ƒ (Dynamic)` gebaut, jede Request frisch aus der DB. Cost: 5 DB-Queries pro Sitemap-Fetch — Google fetched die Sitemap selten, Load ist irrelevant.
+**Warum nicht `revalidate = 60`:** ISR pre-rendert beim Build, kostet Build-RAM (~150 MB), kann auf RAM-knappen Hetzner-Boxen den Build OOM-killen. `force-dynamic` skipped Pre-Render komplett.
+**Deep-Dive:** [SEO.md — Sitemap dynamic rendering](SEO.md#sitemap-dynamic-rendering).
+
 ---
 
 ## Payload / CMS

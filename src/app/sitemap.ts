@@ -3,6 +3,24 @@ import { getPayload } from 'payload'
 import config from '@payload-config'
 
 /**
+ * Force dynamic rendering — re-build the sitemap on every request so
+ * editor slug edits show up immediately.
+ *
+ * Without this, Next.js classifies the route as `○ (Static)` and caches
+ * it forever until the next `rm -rf .next` (i.e. the next deploy).
+ * Admin slug changes never reach Search Console between deploys — the
+ * Boothside team hit this when an editor renamed all blog post slugs
+ * and the live sitemap kept serving the old URLs for two days.
+ *
+ * `revalidate = N` is the ISR alternative but pre-renders at build
+ * time, which costs build RAM (~150 MB on a small site). `force-dynamic`
+ * skips build-time pre-render entirely and re-renders on each request.
+ * Search Console hits the sitemap a handful of times per day, so the
+ * runtime DB cost is negligible.
+ */
+export const dynamic = 'force-dynamic'
+
+/**
  * sitemap.xml — auto-generated from the database.
  *
  * Queries all Pages and builds a sitemap entry per slug.

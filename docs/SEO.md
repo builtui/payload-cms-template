@@ -14,10 +14,18 @@ How per-page SEO metadata flows from Payload to the rendered HTML. Read this bef
 | Default OG image | `src/globals/SiteSettings.ts` (`defaultOgImage`) | site-wide fallback when a doc has no own cover |
 | `buildPageMetadata` helper | `src/lib/seo.ts` | reads the doc + SiteSettings, emits a complete Next.js Metadata object |
 | Root layout defaults | `src/app/(frontend)/layout.tsx` | `metadataBase`, brand title template, fallback OG block |
-| Sitemap | `src/app/sitemap.ts` | auto-generated from `pages` collection |
+| Sitemap | `src/app/sitemap.ts` | auto-generated from `pages` collection, dynamic-rendered |
 | Robots | `src/app/robots.ts` | allows everything except `/admin` + `/api`, references sitemap |
 
 `buildPageMetadata` is the single seam every route goes through. If a route doesn't call it, the editor's SEO inputs never reach the HTML head — that's exactly the Boothside bug.
+
+### Sitemap dynamic rendering
+
+`src/app/sitemap.ts` exports `export const dynamic = 'force-dynamic'`. **Don't remove this.** Without it, Next.js classifies the route as `○ (Static)`: the sitemap is generated once at build time and cached forever until the next `rm -rf .next` (i.e. the next deploy). Editor slug edits never reach Search Console between deploys.
+
+`force-dynamic` flips it to `ƒ (Dynamic)` — Next.js re-renders on every request. Cost is one set of DB queries per fetch; Google hits the sitemap a few times per day, so the load is irrelevant.
+
+The ISR alternative (`revalidate = 60`) was tried first but pre-renders at build time, which costs ~150 MB of RAM and tipped a RAM-constrained Hetzner build into the OOM-killer (Boothside, 2026-05). `force-dynamic` sidesteps both problems — see [KNOWN-ISSUES → sitemap.xml zeigt alte Slugs](KNOWN-ISSUES.md#sitemapxml-zeigt-alte-slugs-nach-editor-änderungen-refresht-erst-beim-nächsten-deploy).
 
 ---
 
