@@ -28,16 +28,25 @@ function renderNode(node: LexicalNode, i: number): React.ReactNode {
 
   const children = node.children?.map((child, j) => renderNode(child, j))
 
-  if (node.type === 'paragraph') return <p key={i}>{children}</p>
+  // Tailwind v4 Preflight resets margins on every element to 0 — without
+  // these explicit classes the paragraphs and lists collapse into one
+  // visual block even though the Lexical editor saves them as discrete
+  // nodes. The Boothside team hit this when editor-authored multi-paragraph
+  // body copy rendered as a wall of text on the frontend. `last:mb-0`
+  // keeps the trailing element from adding a phantom gap below the rich
+  // text. Lists also need explicit ml + list-style because Preflight
+  // strips those too.
+  if (node.type === 'paragraph') return <p key={i} className="mb-4 last:mb-0">{children}</p>
   if (node.type === 'heading') {
     const Tag = (node.tag || 'h2') as keyof React.JSX.IntrinsicElements
-    return <Tag key={i}>{children}</Tag>
+    return <Tag key={i} className="mb-3 last:mb-0">{children}</Tag>
   }
   if (node.type === 'list') {
     const Tag = node.listType === 'number' ? 'ol' : 'ul'
-    return <Tag key={i}>{children}</Tag>
+    const listStyle = node.listType === 'number' ? 'list-decimal' : 'list-disc'
+    return <Tag key={i} className={`mb-4 last:mb-0 ml-6 ${listStyle}`}>{children}</Tag>
   }
-  if (node.type === 'listitem') return <li key={i}>{children}</li>
+  if (node.type === 'listitem') return <li key={i} className="mb-1 last:mb-0">{children}</li>
   if (node.type === 'link') {
     const url = (node.fields as any)?.url || node.url || '#'
     return <a key={i} href={url}>{children}</a>
