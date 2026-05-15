@@ -36,7 +36,21 @@ function renderNode(node: LexicalNode, i: number): React.ReactNode {
   // keeps the trailing element from adding a phantom gap below the rich
   // text. Lists also need explicit ml + list-style because Preflight
   // strips those too.
-  if (node.type === 'paragraph') return <p key={i} className="mb-4 last:mb-0">{children}</p>
+  //
+  // Empty paragraphs (editor hits Enter twice for a "blank line") are
+  // dropped. Rendering them as `<p></p>` produces a 0-height element
+  // that still contributes its bottom-margin, inconsistently doubling
+  // the visible gap around invisible nodes. Spacing comes from the
+  // explicit `mb-*` on real content elements, not from node count.
+  if (node.type === 'paragraph') {
+    const hasContent = node.children && node.children.some(c => {
+      if (c.type === 'text') return (c.text || '').trim().length > 0
+      // Inline non-text (links, formatted runs) counts as content.
+      return c.type !== 'text'
+    })
+    if (!hasContent) return null
+    return <p key={i} className="mb-6 last:mb-0">{children}</p>
+  }
   if (node.type === 'heading') {
     const Tag = (node.tag || 'h2') as keyof React.JSX.IntrinsicElements
     return <Tag key={i} className="mb-3 last:mb-0">{children}</Tag>
@@ -44,7 +58,7 @@ function renderNode(node: LexicalNode, i: number): React.ReactNode {
   if (node.type === 'list') {
     const Tag = node.listType === 'number' ? 'ol' : 'ul'
     const listStyle = node.listType === 'number' ? 'list-decimal' : 'list-disc'
-    return <Tag key={i} className={`mb-4 last:mb-0 ml-6 ${listStyle}`}>{children}</Tag>
+    return <Tag key={i} className={`mb-6 last:mb-0 ml-6 ${listStyle}`}>{children}</Tag>
   }
   if (node.type === 'listitem') return <li key={i} className="mb-1 last:mb-0">{children}</li>
   if (node.type === 'link') {
