@@ -24,6 +24,21 @@ Deep-Dive-Verweise gehen in `LEARNINGS.md` (Detail-Erklärungen) oder `DEPLOYMEN
 
 ## Build & Deploy
 
+### `pnpm lint` crasht mit `TypeError: Converting circular structure to JSON` (`property 'react' closes the circle`)
+**Symptom:** `eslint .` bricht ab, bevor eine einzige Datei gelintet wird — Stack zeigt `@eslint/eslintrc/.../config-validator.js` → `_loadExtendedShareableConfig`.
+**Ursache:** `eslint-config-next@16.2.x` liefert seine Presets als **native Flat-Config-Arrays** (`[{ name:'next', files, plugins:{ react }, … }]`), NICHT als legacy-eslintrc-Configs. Das scaffolded `FlatCompat.extends('next/core-web-vitals','next/typescript')` ist aber der *legacy→flat-Konverter* — es schiebt das fertige Array in den eslintrc-Schema-Validator, der ein Objekt erwartet, das Array ablehnt und beim Formatieren der Fehlermeldung am eingebetteten (zirkulären) react-Plugin `JSON.stringify`-crasht.
+**Fix:** `FlatCompat` raus, die Flat-Presets direkt importieren und spreaden (`eslint.config.mjs`):
+```js
+import coreWebVitals from 'eslint-config-next/core-web-vitals'
+import typescript from 'eslint-config-next/typescript'
+export default [
+  { ignores: ['.next/**', 'dist/**', 'src/app/(payload)/**', 'src/payload-types.ts'] },
+  ...coreWebVitals,
+  ...typescript,
+]
+```
+**Deep-Dive:** Betrifft jedes Projekt aus diesem Template (ludwigmoeller + hugenottenhaus crashen identisch). `eslint-config-next/typescript` zieht `typescript-eslint/recommended` rein → `@typescript-eslint/no-explicit-any` ist **error**; Payload-idiomatische `any` (Config-Callbacks, populierte Relations) lösen dann viele Findings aus — projektweise entscheiden: Regel auf `warn` setzen oder `any` typisieren.
+
 ### `next build` failt mit `relation "..." does not exist`
 **Ursache:** DB ist bei Build nicht erreichbar (CI-Environment ohne DB-Zugang), oder Schema fehlt auf Prod.
 **Fix:** Entweder `generateStaticParams` in try/catch wrappen (on-demand fallback) ODER Migration laufen lassen (`pnpm payload migrate`).
@@ -49,6 +64,15 @@ export async function generateStaticParams() {
 // tsconfig.json
 { "exclude": ["node_modules", "**/*.example.ts", "**/*.example.tsx", "src/seed.ts"] }
 ```
+
+### `next build` failt mit `Cannot find module 'mustache'` (o.ä.) aus optionalem Tooling
+**Symptom:** Lokal baut der Commit sauber, auf Prod (frischer `pnpm install --frozen-lockfile`) bricht der tsc-Step: `Type error: Cannot find module 'mustache' or its corresponding type declarations` in z.B. `src/lib/postmarkTemplate.ts`.
+**Ursache:** Eine **nicht-Runtime-Tooling-Datei** (Postmark-Template-Sync o.ä.) importiert ein Package, das nur ad-hoc lokal in `node_modules` liegt, aber NICHT in `package.json`/Lockfile steht. Lokal baut's (Modul vorhanden), Prod-`--frozen-lockfile` installiert es nicht → tsc findet's nicht. Next type-checkt das ganze Projekt, also bricht der Build obwohl die Datei zur Laufzeit nie importiert wird.
+**Fix:** Die Tooling-Datei aus tsconfig `exclude` nehmen (wie `seed.ts`), wenn nichts sie zur Laufzeit importiert:
+```json
+{ "exclude": ["node_modules", "**/*.example.ts", "src/seed.ts", "src/lib/postmarkTemplate.ts"] }
+```
+Alternativ die Deps korrekt als `devDependencies` in `package.json` aufnehmen, falls das Feature wirklich genutzt wird. Schnell-Check welche Datei: `grep -rl "from 'mustache'\|from 'postmark'" src/`.
 
 ### `next build` OOM (Out-of-Memory)
 **Ursache:** Next.js 16 + Payload brauchen bei größeren Schemas deutlich mehr Heap.
@@ -313,6 +337,28 @@ SELECT _locale, col FROM table_locales ORDER BY _locale LIMIT 8;
 ### `hasLocalePrefix` / Links vergessen locale
 **Symptom:** `/about` statt `/de/about`.
 **Fix:** `SmartLink` bekommt `locale`-Prop. `resolveUrl(link, locale)` prepended locale-Segment.
+
+### URL-Segment-i18n: locale-Pfade redirecten endlos auf sich selbst (307-Loop) — nur im Prod-Build
+**Symptom:** In `pnpm dev` rendern `/de`, `/en` mit 200. Im Production-Build (`next start`) gibt JEDE locale-präfigierte URL `307 → exakt sich selbst` (`/de` → `/de`, `/de/x` → `/de/x`) — Endlosschleife. `/` → `/de` → `/de`.
+**Ursache:** Next 16 hat die `middleware`-Konvention zu `proxy` umbenannt (**nodejs**-Runtime, nicht mehr edge). Der nodejs-Proxy führt `NextResponse.rewrite(...)` als echte Sub-Request aus und läuft danach **erneut** — diesmal auf dem ent-präfigierten Pfad (`/de` →rewrite→ `/` → Re-Entry auf `/`). Da `/` unpräfigiert ist, greift der Redirect-Zweig → zurück auf `/{locale}` → Loop. Die alte edge-`middleware` machte interne Rewrites ohne Re-Entry, daher dev/lokal unauffällig.
+**Fix:** Reentry-Guard. Der Rewrite setzt einen `x-locale`-Header; liegt der beim Eintritt schon an, ist die Locale bereits aufgelöst → durchlassen statt nochmal zu redirecten:
+```ts
+export function proxy(req: NextRequest) {
+  if (req.headers.get('x-locale')) return NextResponse.next()   // interner Rewrite-Reentry
+  const matched = SUPPORTED.find((l) => pathname === `/${l}` || pathname.startsWith(`/${l}/`))
+  // matched → rewrite (Header x-locale setzen) ; sonst → redirect /{locale}{path}
+}
+```
+**Deep-Dive:** `src/middleware.example.ts` sollte auf Next 16 zu `proxy.example.ts` migriert werden (Export `proxy`, Guard + Fix aus dem nächsten Eintrag). Erstmals beim Tatiana-Liss-Deploy aufgetreten.
+
+### URL-Segment-i18n: jede Seite 500 hinter nginx/SSL (`EPROTO wrong version number`)
+**Symptom:** Lokal direkt auf `127.0.0.1:3000` → 200; hinter nginx (TLS) → jede Seite 500. pm2-Log: `Failed to proxy https://localhost:3000/ … EPROTO … tls_validate_record_header:wrong version number`.
+**Ursache:** Der Next-16-nodejs-`proxy` **fetcht** das `NextResponse.rewrite`-Ziel als echte HTTP-Request. nginx terminiert TLS und forwarded `X-Forwarded-Proto: https`; der Proxy erbt das Schema und fetcht `https://localhost:3000` — TLS-Handshake gegen den **Klartext**-Port → EPROTO → 500. (Hängt mit dem Reentry-Loop oben zusammen: gleiche proxy-Semantik.)
+**Fix:** Rewrite-Ziel fest auf die interne Klartext-Origin pinnen statt das geforwardete Schema zu erben:
+```ts
+const target = new URL(`${url.pathname}${url.search}`, 'http://127.0.0.1:3000')
+return NextResponse.rewrite(target, { request: { headers } })
+```
 
 ---
 
