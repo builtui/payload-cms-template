@@ -45,7 +45,7 @@ export const dynamic = 'force-dynamic'
  * ──────────────────────────────────────────────────────────────────
  * i18n MODE — emit one entry per locale + hreflang alternates
  * ──────────────────────────────────────────────────────────────────
- * When you activate `middleware.example.ts` and restructure routes
+ * When you activate `proxy.example.ts` and restructure routes
  * under `[locale]/`, every URL needs to appear once per locale, and
  * each entry needs `alternates.languages` so Google can pair them.
  *

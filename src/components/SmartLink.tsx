@@ -30,7 +30,7 @@ function hasLocalePrefix(path: string): boolean {
  *
  * `locale` is optional:
  *   - if provided, all internal hrefs are prefixed with `/${locale}`
- *     (enables the i18n URL-segment pattern — see src/middleware.example.ts).
+ *     (enables the i18n URL-segment pattern — see src/proxy.example.ts).
  *   - if omitted, hrefs stay unprefixed (legacy / non-i18n sites).
  */
 function resolveUrl(link: LinkData, locale?: string): string | null {

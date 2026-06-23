@@ -34,8 +34,8 @@ import config from '@payload-config'
  * - With `opts.locale` + the list in `MULTI_LOCALE_LOCALES`: emits
  *   canonical for the current locale plus hreflang for every locale and
  *   an `x-default` pointing at MULTI_LOCALE_DEFAULT. Activate when (and
- *   only when) you've wired up `src/middleware.ts` from
- *   `middleware.example.ts` and restructured routes under `[locale]/`.
+ *   only when) you've wired up `src/proxy.ts` from
+ *   `proxy.example.ts` and restructured routes under `[locale]/`.
  *
  * Image fallback chain (most specific → least specific)
  * ─────────────────────────────────────────────────────

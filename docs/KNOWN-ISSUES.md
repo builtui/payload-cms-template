@@ -332,7 +332,7 @@ SELECT _locale, col FROM table_locales ORDER BY _locale LIMIT 8;
 
 ### Falsche Sprache bei Social-Shares / Google-Index
 **Ursache:** Header-based Locale-Detection (Accept-Language). Google crawlt mit EN-Header, User shared in EN, auch wenn das User-facing DE ist.
-**Fix:** URL-Segment-Pattern (`/en/...`, `/de/...`). Siehe `middleware.example.ts`.
+**Fix:** URL-Segment-Pattern (`/en/...`, `/de/...`). Siehe `proxy.example.ts`.
 
 ### `hasLocalePrefix` / Links vergessen locale
 **Symptom:** `/about` statt `/de/about`.
@@ -349,7 +349,7 @@ export function proxy(req: NextRequest) {
   // matched → rewrite (Header x-locale setzen) ; sonst → redirect /{locale}{path}
 }
 ```
-**Deep-Dive:** `src/middleware.example.ts` sollte auf Next 16 zu `proxy.example.ts` migriert werden (Export `proxy`, Guard + Fix aus dem nächsten Eintrag). Erstmals beim Tatiana-Liss-Deploy aufgetreten.
+**Deep-Dive:** Die Template-Vorlage `src/proxy.example.ts` nutzt den `[locale]`-Ordner-Ansatz (`NextResponse.next()`, **kein** Rewrite) und ist von diesem Loop NICHT betroffen — sie braucht auf Next 16 nur den `middleware`→`proxy`-Rename. Guard + der Fix aus dem nächsten Eintrag gelten der **Rewrite-Variante** (URL-Präfix ohne `[locale]`-Ordner), wie beim Tatiana-Liss-Deploy. Beide Varianten sind in `proxy.example.ts` dokumentiert.
 
 ### URL-Segment-i18n: jede Seite 500 hinter nginx/SSL (`EPROTO wrong version number`)
 **Symptom:** Lokal direkt auf `127.0.0.1:3000` → 200; hinter nginx (TLS) → jede Seite 500. pm2-Log: `Failed to proxy https://localhost:3000/ … EPROTO … tls_validate_record_header:wrong version number`.

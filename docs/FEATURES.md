@@ -97,13 +97,13 @@ Default-Wrapper-Felder: `paddingTop`, `paddingBottom`, `background`, `dividerTop
 
 Diese Files liegen im Template, aber du entscheidest pro Projekt, ob du sie aktivierst.
 
-### i18n URL-Segmente (`middleware.example.ts`)
+### i18n URL-Segmente (`proxy.example.ts`)
 **Wann aktivieren:** Wenn das Projekt mehrsprachig ist UND gute SEO + SSG wichtig ist.
 **Warum:** Header-based Locale-Detection macht alle Pages dynamic (kein ISR), Google indexiert nur eine Sprache, Social-Shares landen in falscher Sprache.
 **Was es bringt:** URL-Segment-Pattern `/en/...`, `/de/...`. Beide Sprachen statisch generiert, hreflang sauber, TTFB-Drop von ~1.2s auf ~100ms.
 
 **Aktivierung:**
-1. `src/middleware.example.ts` → `src/middleware.ts` umbenennen
+1. `src/proxy.example.ts` → `src/proxy.ts` umbenennen
 2. Routes unter `src/app/(frontend)/[locale]/…` legen
 3. Root-Layout im `[locale]/` liest `params.locale` und passt es durch
 4. Jede Page liest `params.locale` und forwarded es an `RenderBlocks` + alle Komponenten

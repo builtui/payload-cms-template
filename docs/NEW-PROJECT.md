@@ -184,7 +184,7 @@ Sobald URL-Segmente: **Locale aus `params` durch jede Route + Component forwarde
 - **`buildPageMetadata` in jeder neuen Route**: das Template-`lib/seo.ts` hat einen Helper, der plugin-seo's `meta.*`-Felder mit canonical, hreflang (wenn i18n aktiv) und OG-Image-Fallback zu Next.js-Metadata verkabelt. **Jede neue Page-Route MUSS `generateMetadata` exportieren, das `buildPageMetadata` aufruft** — sonst kommt vom Editor gepflegtes SEO nicht im HTML an (Boothside-Lesson, siehe [LEARNINGS.md §9](LEARNINGS.md#9-bugs-die-sich-wiederholen-können)).
 - **SiteSettings → `defaultOgImage` hochladen** (1200×630 px). Wird als Site-weiter OG-Image-Fallback in `buildPageMetadata` verwendet.
 - **Site-Name in `lib/seo.ts` anpassen**: Konstante `SITE_NAME_FALLBACK` (am besten via SiteSettings.siteName im Admin gepflegt, dann greift Fallback nie).
-- Beim Aktivieren von **i18n-URL-Segmenten** (`middleware.example.ts` → `middleware.ts`): jede `buildPageMetadata`-Aufrufstelle bekommt zusätzlich `{ locale }`. Erst damit emittiert der Helper hreflang. Details: [SEO.md → Multi-locale activation](SEO.md#multi-locale-i18n-activation).
+- Beim Aktivieren von **i18n-URL-Segmenten** (`proxy.example.ts` → `proxy.ts`): jede `buildPageMetadata`-Aufrufstelle bekommt zusätzlich `{ locale }`. Erst damit emittiert der Helper hreflang. Details: [SEO.md → Multi-locale activation](SEO.md#multi-locale-i18n-activation).
 
 ### H. Live Preview konfigurieren
 

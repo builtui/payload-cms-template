@@ -90,7 +90,7 @@ If the editor leaves a field empty, the fallback chain in `buildPageMetadata` ki
 
 ## Multi-locale (i18n) activation
 
-Single-locale is the default. When you switch to i18n (rename `middleware.example.ts` → `middleware.ts`, move routes under `[locale]/`):
+Single-locale is the default. When you switch to i18n (rename `proxy.example.ts` → `proxy.ts`, move routes under `[locale]/`):
 
 1. **Pass locale into every `buildPageMetadata` call:**
 

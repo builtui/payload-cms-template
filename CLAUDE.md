@@ -322,7 +322,7 @@ src/
 │   ├── (frontend)/      # Public routes + globals.css
 │   └── (payload)/       # Admin (auto-generated — nicht editieren)
 ├── payload.config.ts
-├── middleware.example.ts   # Opt-in i18n URL-Segmente
+├── proxy.example.ts   # Opt-in i18n URL-Segmente
 └── seed.example.ts         # Copy → seed.ts pro Projekt
 ```
 

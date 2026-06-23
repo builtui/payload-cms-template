@@ -80,6 +80,6 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   // never see draft titles.
   const page = await fetchPageBySlug(slug, false).catch(() => null)
   // pathSuffix is the URL after the site root. Add { locale } here when
-  // running in i18n mode — see middleware.example.ts.
+  // running in i18n mode — see proxy.example.ts.
   return buildPageMetadata(page as any, { pathSuffix: slug })
 }
